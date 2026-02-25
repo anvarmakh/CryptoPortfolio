@@ -69,6 +69,21 @@ function formatUSD(value) {
   return new Intl.NumberFormat('en-US', opts).format(value);
 }
 
+// Escape a string for safe use inside an HTML attribute (value="...").
+function escapeAttr(v) {
+  return String(v == null ? '' : v)
+    .replace(/&/g, '&amp;')
+    .replace(/"/g, '&quot;');
+}
+
+// Escape a string for safe use as HTML text content.
+function escapeHtml(v) {
+  return String(v == null ? '' : v)
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;');
+}
+
 function formatPercent(value) {
   if (!Number.isFinite(value)) return '0%';
   return `${value.toFixed(2)}%`;
@@ -176,22 +191,22 @@ function renderAssetsTable() {
       <td class="py-2 pr-2">
         <input data-index="${index}" data-field="symbol" type="text"
                class="w-20 md:w-24 rounded-md border border-slate-700 bg-slate-900/80 px-2 py-1 text-xs text-slate-100 focus:outline-none focus:ring-1 focus:ring-emerald-500/70 focus:border-emerald-400"
-               value="${asset.symbol || ''}" />
+               value="${escapeAttr(asset.symbol)}" />
       </td>
       <td class="py-2 px-2">
         <input data-index="${index}" data-field="id" type="text"
                class="w-32 md:w-40 rounded-md border border-slate-700 bg-slate-900/80 px-2 py-1 text-xs text-slate-100 focus:outline-none focus:ring-1 focus:ring-emerald-500/70 focus:border-emerald-400"
-               value="${asset.id || ''}" placeholder="e.g. bitcoin, ethereum" />
+               value="${escapeAttr(asset.id)}" placeholder="e.g. bitcoin, ethereum" />
       </td>
       <td class="py-2 px-2 text-right">
         <input data-index="${index}" data-field="allocation" type="number" step="0.1"
                class="number-input w-20 rounded-md border border-slate-700 bg-slate-900/80 px-2 py-1 text-xs text-right text-slate-100 focus:outline-none focus:ring-1 focus:ring-emerald-500/70 focus:border-emerald-400"
-               value="${asset.allocation ?? ''}" />
+               value="${escapeAttr(asset.allocation ?? '')}" />
       </td>
       <td class="py-2 px-2 text-right">
         <input data-index="${index}" data-field="units" type="number" step="0.00000001"
                class="number-input w-24 rounded-md border border-slate-700 bg-slate-900/80 px-2 py-1 text-xs text-right text-slate-100 focus:outline-none focus:ring-1 focus:ring-emerald-500/70 focus:border-emerald-400"
-               value="${asset.units ?? ''}" />
+               value="${escapeAttr(asset.units ?? '')}" />
       </td>
       <td class="py-2 px-2 text-right text-slate-200">
         ${asset.price ? formatUSD(asset.price) : '–'}
@@ -253,22 +268,16 @@ function renderSummaryAndNextStep() {
   els.summaryMax.textContent = formatUSD(config.maxAddition);
   els.summaryPeriods.textContent = String(config.completedPeriods ?? 0);
 
-  const nextPeriodIndex = (config.completedPeriods || 0) + 1;
-  const targetValue = config.initialValue + nextPeriodIndex * config.stepPerPeriod;
-  const theoreticalChange = targetValue - currentValue;
-
-  let cappedChange = theoreticalChange;
-  if (theoreticalChange > config.maxAddition) {
-    cappedChange = config.maxAddition;
-  }
+  // Reuse computeStepDetails so the summary and the step section always agree.
+  const { targetValue, theoreticalChange, cappedChange, direction } = computeStepDetails();
 
   els.nextTargetValue.textContent = formatUSD(targetValue);
   els.nextTheoretical.textContent = formatUSD(theoreticalChange);
   els.nextRecommended.textContent = formatUSD(cappedChange);
 
   let directionText = 'Hold';
-  if (cappedChange > 0.5) directionText = `Invest ${formatUSD(cappedChange)}`;
-  else if (cappedChange < -0.5) directionText = `Withdraw ${formatUSD(Math.abs(cappedChange))}`;
+  if (direction === 'Invest') directionText = `Invest ${formatUSD(cappedChange)}`;
+  else if (direction === 'Withdraw') directionText = `Withdraw ${formatUSD(Math.abs(cappedChange))}`;
   els.nextDirection.textContent = directionText;
   els.nextDirection.className =
     'font-medium ' +
@@ -366,7 +375,7 @@ function renderStepDetailsAndTrades() {
     const tr = document.createElement('tr');
     tr.className = 'hover:bg-slate-800/60';
     tr.innerHTML = `
-      <td class="py-2 pr-2 text-slate-100">${t.symbol}</td>
+      <td class="py-2 pr-2 text-slate-100">${escapeHtml(t.symbol)}</td>
       <td class="py-2 px-2 text-right text-slate-200">${formatUSD(t.targetValue)}</td>
       <td class="py-2 px-2 text-right text-slate-200">${formatUSD(t.currentValue)}</td>
       <td class="py-2 px-2 text-right ${
@@ -439,18 +448,20 @@ function computePerAssetTrades(stepDetails) {
 
 async function fetchPrices() {
   const assets = state.assets || [];
-  const ids = [];
-  const symbols = [];
+
+  // Deduplicate as pairs keyed by id so uniqueIds[i] always corresponds to uniqueSymbols[i].
+  const seenIds = new Set();
+  const uniqueIds = [];
+  const uniqueSymbols = [];
 
   assets.forEach((a) => {
-    if (typeof a.id === 'string' && a.id.trim().length > 0) {
-      ids.push(a.id.trim());
-      symbols.push(String(a.symbol || '').trim().toUpperCase());
+    const id = typeof a.id === 'string' ? a.id.trim() : '';
+    if (id && !seenIds.has(id)) {
+      seenIds.add(id);
+      uniqueIds.push(id);
+      uniqueSymbols.push(String(a.symbol || '').trim().toUpperCase());
     }
   });
-
-  const uniqueIds = Array.from(new Set(ids));
-  const uniqueSymbols = Array.from(new Set(symbols));
 
   if (!uniqueIds.length) {
     els.stepError.textContent = 'Please set API IDs (e.g. bitcoin, ethereum) for your assets.';
@@ -465,8 +476,8 @@ async function fetchPrices() {
 
   const params = new URLSearchParams();
   params.set('provider', provider);
-  params.set('ids', ids.join(','));
-  params.set('symbols', symbols.join(','));
+  params.set('ids', uniqueIds.join(','));
+  params.set('symbols', uniqueSymbols.join(','));
 
   try {
     const res = await fetch(`/api/prices?${params.toString()}`);
@@ -553,6 +564,7 @@ function renderHistory(rows) {
 }
 
 async function createSnapshotFromStep(details) {
+  els.applyStepBtn.disabled = true;
   try {
     const { config } = state;
     const periodIndex = config.completedPeriods || 0;
@@ -589,25 +601,9 @@ async function createSnapshotFromStep(details) {
       throw new Error(`History save failed: ${res.status}`);
     }
 
-    const saved = await res.json();
-    if (els.historyTableBody) {
-      // Prepend new row to current table without re-fetching everything
-      const currentRows = Array.from(els.historyTableBody.querySelectorAll('tr'));
-      const existingData = currentRows
-        .filter((tr) => tr.dataset && tr.dataset.snapshotId)
-        .map((tr) => ({
-          id: Number(tr.dataset.snapshotId),
-          created_at: tr.dataset.createdAt,
-          period_index: Number(tr.dataset.periodIndex),
-          invested: Number(tr.dataset.invested),
-          portfolio_value: Number(tr.dataset.portfolioValue),
-          pnl: Number(tr.dataset.pnl),
-          pnl_percent: Number(tr.dataset.pnlPercent),
-        }));
-      renderHistory([saved, ...existingData]);
-    } else {
-      await fetchHistory();
-    }
+    await res.json(); // consume the response
+    // Always re-fetch the full list so the table stays consistent with the server.
+    await fetchHistory();
   } catch (err) {
     console.error(err);
     if (els.historyError) {
@@ -615,6 +611,8 @@ async function createSnapshotFromStep(details) {
         'Failed to save snapshot to the server. Your local config is still updated.';
       els.historyError.classList.remove('hidden');
     }
+  } finally {
+    els.applyStepBtn.disabled = false;
   }
 }
 
@@ -653,12 +651,25 @@ function attachEventListeners() {
       asset[field] = String(target.value || '').trim();
     } else if (field === 'allocation') {
       asset.allocation = Number(target.value) || 0;
+      // Surgically update the allocation total without re-rendering the table.
+      const total = state.assets.reduce((s, a) => s + (Number(a.allocation) || 0), 0);
+      els.allocationTotal.textContent = `${total.toFixed(1)}%`;
+      els.allocationTotal.className =
+        'font-semibold ' +
+        (Math.abs(total - 100) < 0.01 ? 'text-emerald-300' : 'text-amber-300');
     } else if (field === 'units') {
       asset.units = Number(target.value) || 0;
+      // Surgically update only the value cell (cells[5]) for this row.
+      const tr = target.closest('tr');
+      if (tr && tr.cells[5]) {
+        tr.cells[5].textContent =
+          asset.price && asset.units ? formatUSD(asset.price * asset.units) : '–';
+      }
     }
 
     saveState();
-    renderAssetsTable();
+    // Do NOT call renderAssetsTable() here — it destroys all inputs and loses
+    // cursor position. Only the computed panels below the table need updating.
     renderSummaryAndNextStep();
     renderStepDetailsAndTrades();
   });
@@ -706,7 +717,7 @@ function attachEventListeners() {
     createSnapshotFromStep(details);
   });
 
-  els.resetAllBtn.addEventListener('click', () => {
+  els.resetAllBtn.addEventListener('click', async () => {
     if (!window.confirm('Reset all configuration and data? This cannot be undone.')) return;
     state = structuredClone(defaultState);
     saveState();
@@ -714,6 +725,13 @@ function attachEventListeners() {
     renderAssetsTable();
     renderSummaryAndNextStep();
     renderStepDetailsAndTrades();
+    // Also wipe server-side history so the table doesn't repopulate on reload.
+    try {
+      await fetch('/api/history', { method: 'DELETE' });
+    } catch (err) {
+      console.error('Failed to clear server history during reset', err);
+    }
+    fetchHistory();
   });
 
   ['initialValueInput', 'stepInput', 'maxAdditionInput', 'periodsPerMonthInput', 'completedPeriodsInput', 'investedSoFarInput'].forEach(
