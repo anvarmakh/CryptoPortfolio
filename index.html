@@ -140,9 +140,9 @@
             </label>
 
             <label class="block">
-              <span class="text-xs text-slate-400">Maximum addition per step (USD)</span>
+              <span class="text-xs text-slate-400">Max change per step (±USD)</span>
               <input id="maxAdditionInput" type="number" step="100" class="number-input mt-1 block w-full rounded-lg border border-slate-700 bg-slate-900/80 px-3 py-2 text-sm text-slate-100 placeholder-slate-500 focus:outline-none focus:ring-2 focus:ring-emerald-500/70 focus:border-emerald-400" placeholder="e.g. 2000" />
-              <p class="mt-1 text-[11px] text-slate-500">Default: $2,000 per step.</p>
+              <p class="mt-1 text-[11px] text-slate-500">Caps both invest and withdraw steps.</p>
             </label>
 
             <label class="block">
@@ -175,9 +175,14 @@
                   Set target allocation, CoinGecko ID, and your current holdings per asset.
                 </p>
               </div>
-              <button id="addAssetBtn" class="text-xs px-3 py-1.5 rounded-lg bg-slate-800 text-slate-100 hover:bg-slate-700 transition-colors">
-                + Add asset
-              </button>
+              <div class="flex items-center gap-2">
+                <button id="refreshPricesBtnAssets" class="text-xs px-3 py-1.5 rounded-lg border border-slate-700 text-slate-300 hover:border-emerald-500 hover:text-emerald-300 transition-colors">
+                  Refresh prices
+                </button>
+                <button id="addAssetBtn" class="text-xs px-3 py-1.5 rounded-lg bg-slate-800 text-slate-100 hover:bg-slate-700 transition-colors">
+                  + Add asset
+                </button>
+              </div>
             </div>
 
             <div class="overflow-x-auto">
@@ -193,6 +198,10 @@
                     <th class="py-2 px-2 text-right">Units held</th>
                     <th class="py-2 px-2 text-right">Price (USD)</th>
                     <th class="py-2 px-2 text-right">Value (USD)</th>
+                    <th class="py-2 px-2 text-right">
+                      Current %
+                      <span class="normal-case font-normal text-slate-600 ml-1">vs target</span>
+                    </th>
                     <th class="py-2 pl-2 text-right">Actions</th>
                   </tr>
                 </thead>
@@ -260,8 +269,8 @@
                 <button id="refreshPricesBtn" class="px-3 py-1.5 rounded-lg bg-slate-800 text-xs text-slate-100 hover:bg-slate-700 transition-colors">
                   Refresh prices
                 </button>
-                <button id="applyStepBtn" class="px-3 py-1.5 rounded-lg bg-emerald-500 text-xs text-slate-950 font-semibold hover:bg-emerald-400 transition-colors">
-                  Apply step (after trades)
+                <button id="applyStepBtn" title="Execute the suggested trades on your exchange first, then click this to record the step and update your invested total." class="px-3 py-1.5 rounded-lg bg-emerald-500 text-xs text-slate-950 font-semibold hover:bg-emerald-400 transition-colors">
+                  Mark step applied
                 </button>
               </div>
             </div>

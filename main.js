@@ -64,7 +64,7 @@ function formatUSD(value) {
   const opts = {
     style: 'currency',
     currency: 'USD',
-    maximumFractionDigits: value >= 1000 ? 0 : 2,
+    maximumFractionDigits: Math.abs(value) >= 1000 ? 0 : 2,
   };
   return new Intl.NumberFormat('en-US', opts).format(value);
 }
@@ -146,6 +146,7 @@ function getElements() {
     addAssetBtn: document.getElementById('addAssetBtn'),
     rebalanceAllocBtn: document.getElementById('rebalanceAllocBtn'),
     refreshPricesBtn: document.getElementById('refreshPricesBtn'),
+    refreshPricesBtnAssets: document.getElementById('refreshPricesBtnAssets'),
     applyStepBtn: document.getElementById('applyStepBtn'),
     resetAllBtn: document.getElementById('resetAllBtn'),
   };
@@ -183,9 +184,28 @@ function renderAssetsTable() {
   els.assetsTableBody.innerHTML = '';
   const fragment = document.createDocumentFragment();
 
+  // Pre-compute total portfolio value so each row can show its actual weight.
+  const totalPortfolioValue = computePortfolioValue();
+
   state.assets.forEach((asset, index) => {
     const tr = document.createElement('tr');
     tr.className = 'hover:bg-slate-800/60';
+
+    const currentAssetValue = (Number(asset.price) || 0) * (Number(asset.units) || 0);
+    const targetPct = Number(asset.allocation) || 0;
+
+    let currentPctCell = '<td class="py-2 px-2 text-right text-slate-500">–</td>';
+    if (totalPortfolioValue > 0 && currentAssetValue > 0) {
+      const currentPct = (currentAssetValue / totalPortfolioValue) * 100;
+      const drift = Math.abs(currentPct - targetPct);
+      const color = drift <= 1 ? 'text-emerald-300' : drift <= 5 ? 'text-amber-300' : 'text-rose-300';
+      const driftSign = currentPct >= targetPct ? '+' : '';
+      const driftStr = `${driftSign}${(currentPct - targetPct).toFixed(1)}%`;
+      currentPctCell = `<td class="py-2 px-2 text-right">
+        <span class="${color} font-medium">${currentPct.toFixed(1)}%</span>
+        <span class="text-[10px] text-slate-500 ml-1">${driftStr}</span>
+      </td>`;
+    }
 
     tr.innerHTML = `
       <td class="py-2 pr-2">
@@ -216,10 +236,11 @@ function renderAssetsTable() {
       <td class="py-2 px-2 text-right text-slate-200">
         ${asset.price && asset.units ? formatUSD(asset.price * asset.units) : '–'}
       </td>
+      ${currentPctCell}
       <td class="py-2 pl-2 text-right">
         <button data-index="${index}" data-action="remove-asset"
                 class="text-[11px] px-2 py-1 rounded-md border border-slate-700 text-slate-300 hover:border-rose-500 hover:text-rose-300 transition-colors">
-          Remove
+          ✕
         </button>
       </td>
     `;
@@ -263,6 +284,9 @@ function renderSummaryAndNextStep() {
     'text-lg md:text-xl font-semibold ' +
     (pnl > 0 ? 'text-emerald-300' : pnl < 0 ? 'text-rose-300' : 'text-slate-200');
   els.pnlPercent.textContent = formatPercent(pnlPct);
+  els.pnlPercent.className =
+    'text-xs font-medium ' +
+    (pnl > 0 ? 'text-emerald-300' : pnl < 0 ? 'text-rose-300' : 'text-slate-400');
 
   const { config } = state;
   els.summaryInitialTarget.textContent = formatUSD(config.initialValue);
@@ -305,8 +329,13 @@ function computeStepDetails() {
   const theoreticalChange = targetValue - currentValue;
 
   let cappedChange = theoreticalChange;
-  if (theoreticalChange > config.maxAddition) {
-    cappedChange = config.maxAddition;
+  if (config.maxAddition > 0) {
+    if (theoreticalChange > config.maxAddition) {
+      cappedChange = config.maxAddition;
+    } else if (theoreticalChange < -config.maxAddition) {
+      // Apply the cap symmetrically: a large withdrawal is also capped.
+      cappedChange = -config.maxAddition;
+    }
   }
 
   let direction = 'Hold';
@@ -488,11 +517,11 @@ async function fetchPrices() {
     els.pricesFetchStatus.textContent = '';
   }
 
-  // Loading state on the button.
+  // Loading state on both Refresh prices buttons.
   const btn = els.refreshPricesBtn;
+  const btnAssets = els.refreshPricesBtnAssets;
   const origLabel = btn.textContent;
-  btn.textContent = 'Fetching…';
-  btn.disabled = true;
+  [btn, btnAssets].forEach((b) => { if (b) { b.textContent = 'Fetching…'; b.disabled = true; } });
 
   const provider = state.priceProvider || 'coingecko';
 
@@ -548,8 +577,7 @@ async function fetchPrices() {
       'Failed to fetch prices. Please check your connection or try again in a moment.';
     els.stepError.classList.remove('hidden');
   } finally {
-    btn.textContent = origLabel;
-    btn.disabled = false;
+    [btn, btnAssets].forEach((b) => { if (b) { b.textContent = origLabel; b.disabled = false; } });
   }
 }
 
@@ -756,6 +784,12 @@ function attachEventListeners() {
   els.refreshPricesBtn.addEventListener('click', () => {
     fetchPrices();
   });
+
+  if (els.refreshPricesBtnAssets) {
+    els.refreshPricesBtnAssets.addEventListener('click', () => {
+      fetchPrices();
+    });
+  }
 
   els.applyStepBtn.addEventListener('click', () => {
     const details = computeStepDetails();
