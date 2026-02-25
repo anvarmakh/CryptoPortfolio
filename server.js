@@ -41,8 +41,9 @@ db.exec(`
 app.use(cors());
 app.use(express.json());
 
-// Static files (SPA)
-app.use(express.static(__dirname));
+// Serve only the two frontend files; never expose server.js, package.json, or the DB.
+app.get('/', (_req, res) => res.sendFile(path.join(__dirname, 'index.html')));
+app.get('/main.js', (_req, res) => res.sendFile(path.join(__dirname, 'main.js')));
 
 app.get('/health', (req, res) => {
   res.json({ status: 'ok' });
@@ -131,11 +132,16 @@ app.get('/api/prices', async (req, res) => {
 
 // History: get all snapshots (most recent first)
 app.get('/api/history', (req, res) => {
-  const stmt = db.prepare(
-    'SELECT id, created_at, period_index, invested, portfolio_value, pnl, pnl_percent, meta FROM snapshots ORDER BY datetime(created_at) DESC, id DESC'
-  );
-  const rows = stmt.all();
-  res.json(rows);
+  try {
+    const stmt = db.prepare(
+      'SELECT id, created_at, period_index, invested, portfolio_value, pnl, pnl_percent, meta FROM snapshots ORDER BY datetime(created_at) DESC, id DESC'
+    );
+    const rows = stmt.all();
+    res.json(rows);
+  } catch (err) {
+    console.error('DB error on GET /api/history', err.message);
+    res.status(500).json({ error: 'Failed to retrieve history' });
+  }
 });
 
 // Create a snapshot
@@ -161,34 +167,44 @@ app.post('/api/history', (req, res) => {
     return res.status(400).json({ error: 'Invalid snapshot payload' });
   }
 
-  const stmt = db.prepare(
-    `INSERT INTO snapshots (created_at, period_index, invested, portfolio_value, pnl, pnl_percent, meta)
-     VALUES (?, ?, ?, ?, ?, ?, ?)`
-  );
+  try {
+    const stmt = db.prepare(
+      `INSERT INTO snapshots (created_at, period_index, invested, portfolio_value, pnl, pnl_percent, meta)
+       VALUES (?, ?, ?, ?, ?, ?, ?)`
+    );
 
-  const info = stmt.run(
-    createdAt,
-    periodIndex,
-    invested,
-    portfolioValue,
-    pnl,
-    pnlPercent,
-    meta ? JSON.stringify(meta) : null
-  );
+    const info = stmt.run(
+      createdAt,
+      periodIndex,
+      invested,
+      portfolioValue,
+      pnl,
+      pnlPercent,
+      meta ? JSON.stringify(meta) : null
+    );
 
-  const row = db
-    .prepare(
-      'SELECT id, created_at, period_index, invested, portfolio_value, pnl, pnl_percent, meta FROM snapshots WHERE id = ?'
-    )
-    .get(info.lastInsertRowid);
+    const row = db
+      .prepare(
+        'SELECT id, created_at, period_index, invested, portfolio_value, pnl, pnl_percent, meta FROM snapshots WHERE id = ?'
+      )
+      .get(info.lastInsertRowid);
 
-  res.status(201).json(row);
+    res.status(201).json(row);
+  } catch (err) {
+    console.error('DB error on POST /api/history', err.message);
+    res.status(500).json({ error: 'Failed to save snapshot' });
+  }
 });
 
 // Optional: clear all snapshots (for manual reset)
 app.delete('/api/history', (req, res) => {
-  db.prepare('DELETE FROM snapshots').run();
-  res.json({ ok: true });
+  try {
+    db.prepare('DELETE FROM snapshots').run();
+    res.json({ ok: true });
+  } catch (err) {
+    console.error('DB error on DELETE /api/history', err.message);
+    res.status(500).json({ error: 'Failed to clear history' });
+  }
 });
 
 app.listen(PORT, () => {

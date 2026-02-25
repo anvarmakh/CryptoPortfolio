@@ -253,22 +253,16 @@ function renderSummaryAndNextStep() {
   els.summaryMax.textContent = formatUSD(config.maxAddition);
   els.summaryPeriods.textContent = String(config.completedPeriods ?? 0);
 
-  const nextPeriodIndex = (config.completedPeriods || 0) + 1;
-  const targetValue = config.initialValue + nextPeriodIndex * config.stepPerPeriod;
-  const theoreticalChange = targetValue - currentValue;
-
-  let cappedChange = theoreticalChange;
-  if (theoreticalChange > config.maxAddition) {
-    cappedChange = config.maxAddition;
-  }
+  // Reuse computeStepDetails so the summary and the step section always agree.
+  const { targetValue, theoreticalChange, cappedChange, direction } = computeStepDetails();
 
   els.nextTargetValue.textContent = formatUSD(targetValue);
   els.nextTheoretical.textContent = formatUSD(theoreticalChange);
   els.nextRecommended.textContent = formatUSD(cappedChange);
 
   let directionText = 'Hold';
-  if (cappedChange > 0.5) directionText = `Invest ${formatUSD(cappedChange)}`;
-  else if (cappedChange < -0.5) directionText = `Withdraw ${formatUSD(Math.abs(cappedChange))}`;
+  if (direction === 'Invest') directionText = `Invest ${formatUSD(cappedChange)}`;
+  else if (direction === 'Withdraw') directionText = `Withdraw ${formatUSD(Math.abs(cappedChange))}`;
   els.nextDirection.textContent = directionText;
   els.nextDirection.className =
     'font-medium ' +
@@ -465,8 +459,8 @@ async function fetchPrices() {
 
   const params = new URLSearchParams();
   params.set('provider', provider);
-  params.set('ids', ids.join(','));
-  params.set('symbols', symbols.join(','));
+  params.set('ids', uniqueIds.join(','));
+  params.set('symbols', uniqueSymbols.join(','));
 
   try {
     const res = await fetch(`/api/prices?${params.toString()}`);
@@ -589,25 +583,9 @@ async function createSnapshotFromStep(details) {
       throw new Error(`History save failed: ${res.status}`);
     }
 
-    const saved = await res.json();
-    if (els.historyTableBody) {
-      // Prepend new row to current table without re-fetching everything
-      const currentRows = Array.from(els.historyTableBody.querySelectorAll('tr'));
-      const existingData = currentRows
-        .filter((tr) => tr.dataset && tr.dataset.snapshotId)
-        .map((tr) => ({
-          id: Number(tr.dataset.snapshotId),
-          created_at: tr.dataset.createdAt,
-          period_index: Number(tr.dataset.periodIndex),
-          invested: Number(tr.dataset.invested),
-          portfolio_value: Number(tr.dataset.portfolioValue),
-          pnl: Number(tr.dataset.pnl),
-          pnl_percent: Number(tr.dataset.pnlPercent),
-        }));
-      renderHistory([saved, ...existingData]);
-    } else {
-      await fetchHistory();
-    }
+    await res.json(); // consume the response
+    // Always re-fetch the full list so the table stays consistent with the server.
+    await fetchHistory();
   } catch (err) {
     console.error(err);
     if (els.historyError) {
