@@ -317,7 +317,7 @@ function renderSummaryAndNextStep() {
     : '';
 
   els.heroCap.textContent =
-    config.maxAddition > 0 ? `±${formatUSD(config.maxAddition)} per step` : 'not set';
+    config.maxAddition > 0 ? `±${formatUSD(config.maxAddition)} per step` : 'no cap';
 
   // Direction badge + big amount — these are the primary visual.
   if (direction === 'Invest') {
