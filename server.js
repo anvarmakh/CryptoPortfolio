@@ -10,8 +10,14 @@ const PORT = process.env.PORT || 3000;
 // Database (SQLite via better-sqlite3)
 const Database = require('better-sqlite3');
 
-const defaultDbPath = path.join(__dirname, 'data', 'portfolio.sqlite');
-const dbPath = process.env.DB_PATH || defaultDbPath;
+// On Railway the code directory (/app) is read-only, but /data (or a mounted
+// volume) is writable. Locally we default to ./data inside the project.
+const isRailway = !!process.env.RAILWAY_ENVIRONMENT;
+
+const localDefaultDbPath = path.join(__dirname, 'data', 'portfolio.sqlite');
+const railwayDefaultDbPath = path.join('/data', 'portfolio.sqlite');
+
+const dbPath = process.env.DB_PATH || (isRailway ? railwayDefaultDbPath : localDefaultDbPath);
 
 fs.mkdirSync(path.dirname(dbPath), { recursive: true });
 
