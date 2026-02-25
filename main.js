@@ -129,7 +129,7 @@ function getElements() {
     stepDirection: document.getElementById('stepDirection'),
     stepPeriodIndex: document.getElementById('stepPeriodIndex'),
     stepEstimatedInvested: document.getElementById('stepEstimatedInvested'),
-    stepEstimatedPnL: document.getElementById('stepEstimatedPnL'),
+    pricesFetchStatus: document.getElementById('pricesFetchStatus'),
 
     tradesTableBody: document.getElementById('tradesTableBody'),
 
@@ -196,7 +196,7 @@ function renderAssetsTable() {
       <td class="py-2 px-2">
         <input data-index="${index}" data-field="id" type="text"
                class="w-32 md:w-40 rounded-md border border-slate-700 bg-slate-900/80 px-2 py-1 text-xs text-slate-100 focus:outline-none focus:ring-1 focus:ring-emerald-500/70 focus:border-emerald-400"
-               value="${escapeAttr(asset.id)}" placeholder="e.g. bitcoin, ethereum" />
+               value="${escapeAttr(asset.id)}" placeholder="e.g. bitcoin, avalanche-2" />
       </td>
       <td class="py-2 px-2 text-right">
         <input data-index="${index}" data-field="allocation" type="number" step="0.1"
@@ -208,8 +208,10 @@ function renderAssetsTable() {
                class="number-input w-24 rounded-md border border-slate-700 bg-slate-900/80 px-2 py-1 text-xs text-right text-slate-100 focus:outline-none focus:ring-1 focus:ring-emerald-500/70 focus:border-emerald-400"
                value="${escapeAttr(asset.units ?? '')}" />
       </td>
-      <td class="py-2 px-2 text-right text-slate-200">
-        ${asset.price ? formatUSD(asset.price) : '–'}
+      <td class="py-2 px-2 text-right ${asset.price ? 'text-slate-200' : (state.lastPricesFetch ? 'text-amber-400' : 'text-slate-500')}">
+        ${asset.price
+          ? formatUSD(asset.price)
+          : (state.lastPricesFetch ? '⚠ no price' : '–')}
       </td>
       <td class="py-2 px-2 text-right text-slate-200">
         ${asset.price && asset.units ? formatUSD(asset.price * asset.units) : '–'}
@@ -311,8 +313,11 @@ function computeStepDetails() {
   if (cappedChange > 0.5) direction = 'Invest';
   else if (cappedChange < -0.5) direction = 'Withdraw';
 
+  // "Invested if applied" = what investedSoFar will become after clicking Apply Step.
   const estimatedInvested = (config.investedSoFar || 0) + cappedChange;
-  const estimatedPnL = currentValue + cappedChange - estimatedInvested;
+  // Note: estimatedPnL is intentionally NOT included here — by value-averaging design,
+  // P&L (currentValue − invested) does not change when you make a perfectly-sized
+  // step investment: both sides of the equation increase by the same cappedChange.
 
   return {
     currentValue,
@@ -322,7 +327,6 @@ function computeStepDetails() {
     direction,
     nextPeriodIndex,
     estimatedInvested,
-    estimatedPnL,
   };
 }
 
@@ -343,6 +347,15 @@ function renderStepDetailsAndTrades() {
     return;
   }
 
+  // Warn when allocations don't sum to 100% — trades will be mis-weighted.
+  const totalAlloc = assets.reduce((s, a) => s + (Number(a.allocation) || 0), 0);
+  if (Math.abs(totalAlloc - 100) > 0.1) {
+    els.stepError.textContent =
+      `Allocation total is ${totalAlloc.toFixed(1)}% — normalize to exactly 100% for accurate per-asset trade suggestions.`;
+    els.stepError.classList.remove('hidden');
+    // Don't return: still render the computed values so the user can see them.
+  }
+
   const details = computeStepDetails();
   els.stepCurrentValue.textContent = formatUSD(details.currentValue);
   els.stepTargetValue.textContent = formatUSD(details.targetValue);
@@ -350,7 +363,6 @@ function renderStepDetailsAndTrades() {
   els.stepCappedChange.textContent = formatUSD(details.cappedChange);
   els.stepPeriodIndex.textContent = String(details.nextPeriodIndex);
   els.stepEstimatedInvested.textContent = formatUSD(details.estimatedInvested);
-  els.stepEstimatedPnL.textContent = formatUSD(details.estimatedPnL);
 
   els.stepDirection.textContent =
     details.direction === 'Invest'
@@ -464,13 +476,23 @@ async function fetchPrices() {
   });
 
   if (!uniqueIds.length) {
-    els.stepError.textContent = 'Please set API IDs (e.g. bitcoin, ethereum) for your assets.';
+    els.stepError.textContent = 'Please set CoinGecko IDs (e.g. bitcoin, ethereum) for your assets.';
     els.stepError.classList.remove('hidden');
     return;
   }
 
   els.stepError.classList.add('hidden');
   els.stepError.textContent = '';
+  if (els.pricesFetchStatus) {
+    els.pricesFetchStatus.classList.add('hidden');
+    els.pricesFetchStatus.textContent = '';
+  }
+
+  // Loading state on the button.
+  const btn = els.refreshPricesBtn;
+  const origLabel = btn.textContent;
+  btn.textContent = 'Fetching…';
+  btn.disabled = true;
 
   const provider = state.priceProvider || 'coingecko';
 
@@ -486,12 +508,34 @@ async function fetchPrices() {
     }
     const data = await res.json();
 
+    // Track which IDs the API actually returned prices for.
+    const returnedIds = new Set(Object.keys(data));
+
     state.assets.forEach((asset) => {
       const id = asset.id;
       if (id && data[id] && typeof data[id].usd === 'number') {
         asset.price = data[id].usd;
       }
     });
+
+    // Identify assets whose IDs were sent but got no price back.
+    const failedAssets = state.assets.filter((a) => {
+      const id = typeof a.id === 'string' ? a.id.trim() : '';
+      return id && !returnedIds.has(id);
+    });
+
+    if (failedAssets.length > 0 && els.pricesFetchStatus) {
+      const list = failedAssets
+        .map((a) => `<strong>${escapeHtml(a.symbol || a.id)}</strong> (ID: <code>${escapeHtml(a.id)}</code>)`)
+        .join(', ');
+      els.pricesFetchStatus.innerHTML =
+        `Price not found for: ${list}. ` +
+        `Check the CoinGecko ID — common fixes: ` +
+        `AVAX&nbsp;→&nbsp;<code>avalanche-2</code>, ` +
+        `INJ&nbsp;→&nbsp;<code>injective-protocol</code>, ` +
+        `MATIC&nbsp;→&nbsp;<code>matic-network</code>.`;
+      els.pricesFetchStatus.classList.remove('hidden');
+    }
 
     state.lastPricesFetch = new Date().toISOString();
     saveState();
@@ -503,6 +547,9 @@ async function fetchPrices() {
     els.stepError.textContent =
       'Failed to fetch prices. Please check your connection or try again in a moment.';
     els.stepError.classList.remove('hidden');
+  } finally {
+    btn.textContent = origLabel;
+    btn.disabled = false;
   }
 }
 
@@ -622,6 +669,14 @@ function attachEventListeners() {
     saveState();
     renderSummaryAndNextStep();
     renderStepDetailsAndTrades();
+    // Brief visual confirmation.
+    const orig = els.saveConfigBtn.textContent;
+    els.saveConfigBtn.textContent = 'Saved ✓';
+    els.saveConfigBtn.classList.replace('bg-emerald-500', 'bg-emerald-700');
+    setTimeout(() => {
+      els.saveConfigBtn.textContent = orig;
+      els.saveConfigBtn.classList.replace('bg-emerald-700', 'bg-emerald-500');
+    }, 1400);
   });
 
   els.addAssetBtn.addEventListener('click', () => {
