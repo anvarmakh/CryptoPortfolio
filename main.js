@@ -971,5 +971,39 @@ function init() {
   }
 }
 
+// ── Font toggle ──────────────────────────────────────────────────────────────
+(function initFontToggle() {
+  const STORAGE_KEY = 'va_font';
+  const MONO_CLASS = 'font-mono-mode';
+
+  const sansBtn = document.getElementById('fontSansBtn');
+  const monoBtn = document.getElementById('fontMonoBtn');
+
+  function applyFont(mono) {
+    document.body.classList.toggle(MONO_CLASS, mono);
+    // Active button: filled/bright. Inactive: dim.
+    if (sansBtn && monoBtn) {
+      sansBtn.className = mono
+        ? 'px-2.5 py-1 text-slate-500 hover:text-slate-300 transition-colors'
+        : 'px-2.5 py-1 text-slate-300 bg-slate-800 transition-colors';
+      monoBtn.className = mono
+        ? 'px-2.5 py-1 text-slate-300 bg-slate-800 transition-colors font-mono'
+        : 'px-2.5 py-1 text-slate-500 hover:text-slate-300 transition-colors font-mono';
+    }
+  }
+
+  const saved = localStorage.getItem(STORAGE_KEY);
+  applyFont(saved === 'mono');
+
+  if (sansBtn) sansBtn.addEventListener('click', () => {
+    localStorage.setItem(STORAGE_KEY, 'sans');
+    applyFont(false);
+  });
+  if (monoBtn) monoBtn.addEventListener('click', () => {
+    localStorage.setItem(STORAGE_KEY, 'mono');
+    applyFont(true);
+  });
+})();
+
 document.addEventListener('DOMContentLoaded', init);
 

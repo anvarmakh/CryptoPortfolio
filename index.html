@@ -7,9 +7,10 @@
   <script src="https://cdn.tailwindcss.com"></script>
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-  <link href="https://fonts.googleapis.com/css2?family=Geist:wght@400;500;600;700&display=swap" rel="stylesheet">
+  <link href="https://fonts.googleapis.com/css2?family=Geist:wght@400;500;600;700&family=Geist+Mono:wght@400;500;600;700&display=swap" rel="stylesheet">
   <style>
     body { font-family: 'Geist', system-ui, -apple-system, sans-serif; }
+    body.font-mono-mode { font-family: 'Geist Mono', 'Courier New', monospace; }
     .number-input::-webkit-outer-spin-button,
     .number-input::-webkit-inner-spin-button { -webkit-appearance: none; margin: 0; }
     .number-input { -moz-appearance: textfield; }
@@ -32,15 +33,30 @@
   <div class="max-w-5xl mx-auto px-4 py-5 sm:py-8 space-y-4 sm:space-y-5">
 
     <!-- ─── HEADER ─────────────────────────────────────────────── -->
-    <header class="flex items-center justify-between">
+    <header class="flex items-center justify-between gap-3">
       <div>
         <h1 class="text-base font-semibold text-slate-100 tracking-tight">Value Averaging Planner</h1>
         <p id="lastUpdated" class="text-[11px] text-slate-500 mt-0.5">Prices not yet loaded · refresh to start</p>
       </div>
-      <button id="resetAllBtn"
-              class="text-[11px] text-slate-600 hover:text-rose-400 transition-colors px-2 py-1 rounded hover:bg-rose-500/10">
-        Reset all
-      </button>
+      <div class="flex items-center gap-3 shrink-0">
+        <!-- Font toggle -->
+        <div class="flex items-center rounded-lg border border-slate-800 overflow-hidden text-[11px]">
+          <button id="fontSansBtn"
+                  class="px-2.5 py-1 text-slate-300 bg-slate-800 transition-colors"
+                  title="Geist (sans-serif)">
+            Aa
+          </button>
+          <button id="fontMonoBtn"
+                  class="px-2.5 py-1 text-slate-500 hover:text-slate-300 transition-colors font-mono"
+                  title="Geist Mono">
+            <span style="font-family:'Geist Mono',monospace">Aa</span>
+          </button>
+        </div>
+        <button id="resetAllBtn"
+                class="text-[11px] text-slate-600 hover:text-rose-400 transition-colors px-2 py-1 rounded hover:bg-rose-500/10">
+          Reset all
+        </button>
+      </div>
     </header>
 
     <!-- ─── HERO: RECOMMENDED ACTION ───────────────────────────── -->
