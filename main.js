@@ -64,7 +64,7 @@ function formatUSD(value) {
   const opts = {
     style: 'currency',
     currency: 'USD',
-    maximumFractionDigits: value >= 1000 ? 0 : 2,
+    maximumFractionDigits: Math.abs(value) >= 1000 ? 0 : 2,
   };
   return new Intl.NumberFormat('en-US', opts).format(value);
 }
@@ -98,10 +98,10 @@ function getElements() {
     pnlValue: document.getElementById('pnlValue'),
     pnlPercent: document.getElementById('pnlPercent'),
 
-    summaryInitialTarget: document.getElementById('summaryInitialTarget'),
-    summaryStep: document.getElementById('summaryStep'),
-    summaryMax: document.getElementById('summaryMax'),
     summaryPeriods: document.getElementById('summaryPeriods'),
+    summaryCurrentPeriod: document.getElementById('summaryCurrentPeriod'),
+    summaryPeriodTarget: document.getElementById('summaryPeriodTarget'),
+    summaryMax: document.getElementById('summaryMax'),
 
     nextTargetValue: document.getElementById('nextTargetValue'),
     nextTheoretical: document.getElementById('nextTheoretical'),
@@ -112,7 +112,6 @@ function getElements() {
     initialValueInput: document.getElementById('initialValueInput'),
     stepInput: document.getElementById('stepInput'),
     maxAdditionInput: document.getElementById('maxAdditionInput'),
-    periodsPerMonthInput: document.getElementById('periodsPerMonthInput'),
     completedPeriodsInput: document.getElementById('completedPeriodsInput'),
     investedSoFarInput: document.getElementById('investedSoFarInput'),
 
@@ -129,7 +128,7 @@ function getElements() {
     stepDirection: document.getElementById('stepDirection'),
     stepPeriodIndex: document.getElementById('stepPeriodIndex'),
     stepEstimatedInvested: document.getElementById('stepEstimatedInvested'),
-    stepEstimatedPnL: document.getElementById('stepEstimatedPnL'),
+    pricesFetchStatus: document.getElementById('pricesFetchStatus'),
 
     tradesTableBody: document.getElementById('tradesTableBody'),
 
@@ -146,6 +145,7 @@ function getElements() {
     addAssetBtn: document.getElementById('addAssetBtn'),
     rebalanceAllocBtn: document.getElementById('rebalanceAllocBtn'),
     refreshPricesBtn: document.getElementById('refreshPricesBtn'),
+    refreshPricesBtnAssets: document.getElementById('refreshPricesBtnAssets'),
     applyStepBtn: document.getElementById('applyStepBtn'),
     resetAllBtn: document.getElementById('resetAllBtn'),
   };
@@ -158,7 +158,7 @@ function syncConfigInputsFromState() {
   els.initialValueInput.value = config.initialValue || '';
   els.stepInput.value = config.stepPerPeriod || '';
   els.maxAdditionInput.value = config.maxAddition || '';
-  els.periodsPerMonthInput.value = config.periodsPerMonth || '';
+  // periodsPerMonth is kept in state for backwards-compat but no longer shown in the UI.
   els.completedPeriodsInput.value = config.completedPeriods || '';
   els.investedSoFarInput.value = config.investedSoFar || '';
   if (els.priceProviderSelect) {
@@ -171,7 +171,7 @@ function syncStateFromConfigInputs() {
   cfg.initialValue = Number(els.initialValueInput.value) || 0;
   cfg.stepPerPeriod = Number(els.stepInput.value) || 0;
   cfg.maxAddition = Number(els.maxAdditionInput.value) || 0;
-  cfg.periodsPerMonth = Math.max(1, Number(els.periodsPerMonthInput.value) || 2);
+  // periodsPerMonth no longer editable in UI; preserve whatever is in state.
   cfg.completedPeriods = Math.max(0, Number(els.completedPeriodsInput.value) || 0);
   const manualInvested = els.investedSoFarInput.value;
   if (manualInvested !== '') {
@@ -183,9 +183,28 @@ function renderAssetsTable() {
   els.assetsTableBody.innerHTML = '';
   const fragment = document.createDocumentFragment();
 
+  // Pre-compute total portfolio value so each row can show its actual weight.
+  const totalPortfolioValue = computePortfolioValue();
+
   state.assets.forEach((asset, index) => {
     const tr = document.createElement('tr');
     tr.className = 'hover:bg-slate-800/60';
+
+    const currentAssetValue = (Number(asset.price) || 0) * (Number(asset.units) || 0);
+    const targetPct = Number(asset.allocation) || 0;
+
+    let currentPctCell = '<td class="py-2 px-2 text-right text-slate-500">–</td>';
+    if (totalPortfolioValue > 0 && currentAssetValue > 0) {
+      const currentPct = (currentAssetValue / totalPortfolioValue) * 100;
+      const drift = Math.abs(currentPct - targetPct);
+      const color = drift <= 1 ? 'text-emerald-300' : drift <= 5 ? 'text-amber-300' : 'text-rose-300';
+      const driftSign = currentPct >= targetPct ? '+' : '';
+      const driftStr = `${driftSign}${(currentPct - targetPct).toFixed(1)}%`;
+      currentPctCell = `<td class="py-2 px-2 text-right">
+        <span class="${color} font-medium">${currentPct.toFixed(1)}%</span>
+        <span class="text-[10px] text-slate-500 ml-1">${driftStr}</span>
+      </td>`;
+    }
 
     tr.innerHTML = `
       <td class="py-2 pr-2">
@@ -196,7 +215,7 @@ function renderAssetsTable() {
       <td class="py-2 px-2">
         <input data-index="${index}" data-field="id" type="text"
                class="w-32 md:w-40 rounded-md border border-slate-700 bg-slate-900/80 px-2 py-1 text-xs text-slate-100 focus:outline-none focus:ring-1 focus:ring-emerald-500/70 focus:border-emerald-400"
-               value="${escapeAttr(asset.id)}" placeholder="e.g. bitcoin, ethereum" />
+               value="${escapeAttr(asset.id)}" placeholder="e.g. bitcoin, avalanche-2" />
       </td>
       <td class="py-2 px-2 text-right">
         <input data-index="${index}" data-field="allocation" type="number" step="0.1"
@@ -208,16 +227,19 @@ function renderAssetsTable() {
                class="number-input w-24 rounded-md border border-slate-700 bg-slate-900/80 px-2 py-1 text-xs text-right text-slate-100 focus:outline-none focus:ring-1 focus:ring-emerald-500/70 focus:border-emerald-400"
                value="${escapeAttr(asset.units ?? '')}" />
       </td>
-      <td class="py-2 px-2 text-right text-slate-200">
-        ${asset.price ? formatUSD(asset.price) : '–'}
+      <td class="py-2 px-2 text-right ${asset.price ? 'text-slate-200' : (state.lastPricesFetch ? 'text-amber-400' : 'text-slate-500')}">
+        ${asset.price
+          ? formatUSD(asset.price)
+          : (state.lastPricesFetch ? '⚠ no price' : '–')}
       </td>
       <td class="py-2 px-2 text-right text-slate-200">
         ${asset.price && asset.units ? formatUSD(asset.price * asset.units) : '–'}
       </td>
+      ${currentPctCell}
       <td class="py-2 pl-2 text-right">
         <button data-index="${index}" data-action="remove-asset"
                 class="text-[11px] px-2 py-1 rounded-md border border-slate-700 text-slate-300 hover:border-rose-500 hover:text-rose-300 transition-colors">
-          Remove
+          ✕
         </button>
       </td>
     `;
@@ -261,12 +283,18 @@ function renderSummaryAndNextStep() {
     'text-lg md:text-xl font-semibold ' +
     (pnl > 0 ? 'text-emerald-300' : pnl < 0 ? 'text-rose-300' : 'text-slate-200');
   els.pnlPercent.textContent = formatPercent(pnlPct);
+  els.pnlPercent.className =
+    'text-xs font-medium ' +
+    (pnl > 0 ? 'text-emerald-300' : pnl < 0 ? 'text-rose-300' : 'text-slate-400');
 
   const { config } = state;
-  els.summaryInitialTarget.textContent = formatUSD(config.initialValue);
-  els.summaryStep.textContent = formatUSD(config.stepPerPeriod);
-  els.summaryMax.textContent = formatUSD(config.maxAddition);
+  // Period card: show computed/contextual values rather than raw config echoes.
+  const nextPeriod = (config.completedPeriods || 0) + 1;
+  const periodTarget = config.initialValue + nextPeriod * config.stepPerPeriod;
   els.summaryPeriods.textContent = String(config.completedPeriods ?? 0);
+  els.summaryCurrentPeriod.textContent = String(nextPeriod);
+  els.summaryPeriodTarget.textContent = formatUSD(periodTarget);
+  els.summaryMax.textContent = formatUSD(config.maxAddition);
 
   // Reuse computeStepDetails so the summary and the step section always agree.
   const { targetValue, theoreticalChange, cappedChange, direction } = computeStepDetails();
@@ -275,17 +303,18 @@ function renderSummaryAndNextStep() {
   els.nextTheoretical.textContent = formatUSD(theoreticalChange);
   els.nextRecommended.textContent = formatUSD(cappedChange);
 
-  let directionText = 'Hold';
+  let directionText = '— Hold —';
   if (direction === 'Invest') directionText = `Invest ${formatUSD(cappedChange)}`;
   else if (direction === 'Withdraw') directionText = `Withdraw ${formatUSD(Math.abs(cappedChange))}`;
   els.nextDirection.textContent = directionText;
+  // Direction is the primary call-to-action: give it a coloured badge appearance.
   els.nextDirection.className =
-    'font-medium ' +
+    'inline-block text-sm font-bold px-3 py-1.5 rounded-lg border ' +
     (cappedChange > 0
-      ? 'text-emerald-300'
+      ? 'text-emerald-300 bg-emerald-500/10 border-emerald-500/30'
       : cappedChange < 0
-      ? 'text-rose-300'
-      : 'text-slate-300');
+      ? 'text-rose-300 bg-rose-500/10 border-rose-500/30'
+      : 'text-slate-400 bg-slate-800/60 border-slate-700');
 
   if (state.lastPricesFetch) {
     const date = new Date(state.lastPricesFetch);
@@ -303,16 +332,24 @@ function computeStepDetails() {
   const theoreticalChange = targetValue - currentValue;
 
   let cappedChange = theoreticalChange;
-  if (theoreticalChange > config.maxAddition) {
-    cappedChange = config.maxAddition;
+  if (config.maxAddition > 0) {
+    if (theoreticalChange > config.maxAddition) {
+      cappedChange = config.maxAddition;
+    } else if (theoreticalChange < -config.maxAddition) {
+      // Apply the cap symmetrically: a large withdrawal is also capped.
+      cappedChange = -config.maxAddition;
+    }
   }
 
   let direction = 'Hold';
   if (cappedChange > 0.5) direction = 'Invest';
   else if (cappedChange < -0.5) direction = 'Withdraw';
 
+  // "Invested if applied" = what investedSoFar will become after clicking Apply Step.
   const estimatedInvested = (config.investedSoFar || 0) + cappedChange;
-  const estimatedPnL = currentValue + cappedChange - estimatedInvested;
+  // Note: estimatedPnL is intentionally NOT included here — by value-averaging design,
+  // P&L (currentValue − invested) does not change when you make a perfectly-sized
+  // step investment: both sides of the equation increase by the same cappedChange.
 
   return {
     currentValue,
@@ -322,7 +359,6 @@ function computeStepDetails() {
     direction,
     nextPeriodIndex,
     estimatedInvested,
-    estimatedPnL,
   };
 }
 
@@ -343,6 +379,15 @@ function renderStepDetailsAndTrades() {
     return;
   }
 
+  // Warn when allocations don't sum to 100% — trades will be mis-weighted.
+  const totalAlloc = assets.reduce((s, a) => s + (Number(a.allocation) || 0), 0);
+  if (Math.abs(totalAlloc - 100) > 0.1) {
+    els.stepError.textContent =
+      `Allocation total is ${totalAlloc.toFixed(1)}% — normalize to exactly 100% for accurate per-asset trade suggestions.`;
+    els.stepError.classList.remove('hidden');
+    // Don't return: still render the computed values so the user can see them.
+  }
+
   const details = computeStepDetails();
   els.stepCurrentValue.textContent = formatUSD(details.currentValue);
   els.stepTargetValue.textContent = formatUSD(details.targetValue);
@@ -350,7 +395,6 @@ function renderStepDetailsAndTrades() {
   els.stepCappedChange.textContent = formatUSD(details.cappedChange);
   els.stepPeriodIndex.textContent = String(details.nextPeriodIndex);
   els.stepEstimatedInvested.textContent = formatUSD(details.estimatedInvested);
-  els.stepEstimatedPnL.textContent = formatUSD(details.estimatedPnL);
 
   els.stepDirection.textContent =
     details.direction === 'Invest'
@@ -464,13 +508,23 @@ async function fetchPrices() {
   });
 
   if (!uniqueIds.length) {
-    els.stepError.textContent = 'Please set API IDs (e.g. bitcoin, ethereum) for your assets.';
+    els.stepError.textContent = 'Please set CoinGecko IDs (e.g. bitcoin, ethereum) for your assets.';
     els.stepError.classList.remove('hidden');
     return;
   }
 
   els.stepError.classList.add('hidden');
   els.stepError.textContent = '';
+  if (els.pricesFetchStatus) {
+    els.pricesFetchStatus.classList.add('hidden');
+    els.pricesFetchStatus.textContent = '';
+  }
+
+  // Loading state on both Refresh prices buttons.
+  const btn = els.refreshPricesBtn;
+  const btnAssets = els.refreshPricesBtnAssets;
+  const origLabel = btn.textContent;
+  [btn, btnAssets].forEach((b) => { if (b) { b.textContent = 'Fetching…'; b.disabled = true; } });
 
   const provider = state.priceProvider || 'coingecko';
 
@@ -486,12 +540,34 @@ async function fetchPrices() {
     }
     const data = await res.json();
 
+    // Track which IDs the API actually returned prices for.
+    const returnedIds = new Set(Object.keys(data));
+
     state.assets.forEach((asset) => {
       const id = asset.id;
       if (id && data[id] && typeof data[id].usd === 'number') {
         asset.price = data[id].usd;
       }
     });
+
+    // Identify assets whose IDs were sent but got no price back.
+    const failedAssets = state.assets.filter((a) => {
+      const id = typeof a.id === 'string' ? a.id.trim() : '';
+      return id && !returnedIds.has(id);
+    });
+
+    if (failedAssets.length > 0 && els.pricesFetchStatus) {
+      const list = failedAssets
+        .map((a) => `<strong>${escapeHtml(a.symbol || a.id)}</strong> (ID: <code>${escapeHtml(a.id)}</code>)`)
+        .join(', ');
+      els.pricesFetchStatus.innerHTML =
+        `Price not found for: ${list}. ` +
+        `Check the CoinGecko ID — common fixes: ` +
+        `AVAX&nbsp;→&nbsp;<code>avalanche-2</code>, ` +
+        `INJ&nbsp;→&nbsp;<code>injective-protocol</code>, ` +
+        `MATIC&nbsp;→&nbsp;<code>matic-network</code>.`;
+      els.pricesFetchStatus.classList.remove('hidden');
+    }
 
     state.lastPricesFetch = new Date().toISOString();
     saveState();
@@ -503,6 +579,8 @@ async function fetchPrices() {
     els.stepError.textContent =
       'Failed to fetch prices. Please check your connection or try again in a moment.';
     els.stepError.classList.remove('hidden');
+  } finally {
+    [btn, btnAssets].forEach((b) => { if (b) { b.textContent = origLabel; b.disabled = false; } });
   }
 }
 
@@ -622,6 +700,14 @@ function attachEventListeners() {
     saveState();
     renderSummaryAndNextStep();
     renderStepDetailsAndTrades();
+    // Brief visual confirmation.
+    const orig = els.saveConfigBtn.textContent;
+    els.saveConfigBtn.textContent = 'Saved ✓';
+    els.saveConfigBtn.classList.replace('bg-emerald-500', 'bg-emerald-700');
+    setTimeout(() => {
+      els.saveConfigBtn.textContent = orig;
+      els.saveConfigBtn.classList.replace('bg-emerald-700', 'bg-emerald-500');
+    }, 1400);
   });
 
   els.addAssetBtn.addEventListener('click', () => {
@@ -701,6 +787,12 @@ function attachEventListeners() {
   els.refreshPricesBtn.addEventListener('click', () => {
     fetchPrices();
   });
+
+  if (els.refreshPricesBtnAssets) {
+    els.refreshPricesBtnAssets.addEventListener('click', () => {
+      fetchPrices();
+    });
+  }
 
   els.applyStepBtn.addEventListener('click', () => {
     const details = computeStepDetails();

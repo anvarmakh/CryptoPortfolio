@@ -54,62 +54,61 @@
               <div id="currentValue" class="text-lg md:text-xl font-semibold">$0</div>
             </div>
             <div>
-              <div class="text-xs text-slate-400">Invested (net)</div>
+              <div class="text-xs text-slate-400">Total invested</div>
               <div id="investedAmount" class="text-lg md:text-xl font-semibold">$0</div>
+              <div class="text-[11px] text-slate-600 mt-0.5">set via "Apply step"</div>
             </div>
             <div>
-              <div class="text-xs text-slate-400">P&amp;L</div>
+              <div class="text-xs text-slate-400">Unrealised P&amp;L</div>
               <div id="pnlValue" class="text-lg md:text-xl font-semibold text-slate-200">$0</div>
-              <div id="pnlPercent" class="text-xs text-slate-400">0%</div>
+              <div id="pnlPercent" class="text-xs font-medium text-slate-400">0%</div>
             </div>
           </div>
         </div>
 
+        <!-- Period progress card: replaces the old "Plan" echo card -->
         <div class="rounded-2xl border border-slate-800 bg-slate-900/60 p-4 md:p-5 shadow-lg shadow-slate-950/60 space-y-3">
           <div class="flex items-center justify-between">
-            <h2 class="text-sm font-semibold text-slate-300 uppercase tracking-wide">Plan</h2>
-            <span class="text-[11px] px-2 py-0.5 rounded-full bg-slate-800 text-slate-300 border border-slate-700">Config</span>
+            <h2 class="text-sm font-semibold text-slate-300 uppercase tracking-wide">Period</h2>
+            <span class="text-[11px] px-2 py-0.5 rounded-full bg-slate-800 text-slate-300 border border-slate-700">Progress</span>
           </div>
           <dl class="space-y-1.5 text-xs text-slate-300">
             <div class="flex justify-between">
-              <dt>Initial target</dt>
-              <dd id="summaryInitialTarget" class="font-medium">$0</dd>
-            </div>
-            <div class="flex justify-between">
-              <dt>Step / period</dt>
-              <dd id="summaryStep" class="font-medium">$0</dd>
-            </div>
-            <div class="flex justify-between">
-              <dt>Max add / step</dt>
-              <dd id="summaryMax" class="font-medium">$0</dd>
-            </div>
-            <div class="flex justify-between">
-              <dt>Completed periods</dt>
+              <dt>Completed</dt>
               <dd id="summaryPeriods" class="font-medium">0</dd>
+            </div>
+            <div class="flex justify-between">
+              <dt>Now on</dt>
+              <dd id="summaryCurrentPeriod" class="font-medium">1</dd>
+            </div>
+            <div class="flex justify-between">
+              <dt>Period target</dt>
+              <dd id="summaryPeriodTarget" class="font-semibold text-slate-100">$0</dd>
+            </div>
+            <div class="flex justify-between">
+              <dt>Cap (±)</dt>
+              <dd id="summaryMax" class="font-medium">$0</dd>
             </div>
           </dl>
         </div>
 
+        <!-- Next step card: action is the primary visual, numbers are secondary -->
         <div class="rounded-2xl border border-slate-800 bg-slate-900/60 p-4 md:p-5 shadow-lg shadow-slate-950/60 space-y-3">
-          <div class="flex items-center justify-between">
-            <h2 class="text-sm font-semibold text-slate-300 uppercase tracking-wide">Next step</h2>
-          </div>
+          <h2 class="text-sm font-semibold text-slate-300 uppercase tracking-wide">Next step</h2>
+          <!-- Direction is the call-to-action; styled dynamically by JS -->
+          <div id="nextDirection" class="inline-block text-sm font-bold px-3 py-1.5 rounded-lg border text-slate-400 bg-slate-800/60 border-slate-700">–</div>
           <dl class="space-y-1.5 text-xs text-slate-300">
             <div class="flex justify-between">
               <dt>Target portfolio</dt>
               <dd id="nextTargetValue" class="font-medium">$0</dd>
             </div>
             <div class="flex justify-between">
-              <dt>Theoretical add</dt>
+              <dt>Gap to target</dt>
               <dd id="nextTheoretical" class="font-medium">$0</dd>
             </div>
             <div class="flex justify-between">
-              <dt>Recommended add</dt>
+              <dt>Capped action</dt>
               <dd id="nextRecommended" class="font-medium">$0</dd>
-            </div>
-            <div class="flex justify-between">
-              <dt>Direction</dt>
-              <dd id="nextDirection" class="font-medium text-slate-300">–</dd>
             </div>
           </dl>
         </div>
@@ -139,15 +138,9 @@
             </label>
 
             <label class="block">
-              <span class="text-xs text-slate-400">Maximum addition per step (USD)</span>
+              <span class="text-xs text-slate-400">Max change per step (±USD)</span>
               <input id="maxAdditionInput" type="number" step="100" class="number-input mt-1 block w-full rounded-lg border border-slate-700 bg-slate-900/80 px-3 py-2 text-sm text-slate-100 placeholder-slate-500 focus:outline-none focus:ring-2 focus:ring-emerald-500/70 focus:border-emerald-400" placeholder="e.g. 2000" />
-              <p class="mt-1 text-[11px] text-slate-500">Default: $2,000 per step.</p>
-            </label>
-
-            <label class="block">
-              <span class="text-xs text-slate-400">Planned investments per month</span>
-              <input id="periodsPerMonthInput" type="number" min="1" max="10" step="1" class="number-input mt-1 block w-full rounded-lg border border-slate-700 bg-slate-900/80 px-3 py-2 text-sm text-slate-100 placeholder-slate-500 focus:outline-none focus:ring-2 focus:ring-emerald-500/70 focus:border-emerald-400" placeholder="Default: 2 (mid + end)" />
-              <p class="mt-1 text-[11px] text-slate-500">Informational only — does not affect step calculations.</p>
+              <p class="mt-1 text-[11px] text-slate-500">Caps both invest and withdraw steps.</p>
             </label>
 
             <label class="block">
@@ -171,12 +164,17 @@
               <div>
                 <h2 class="text-sm font-semibold text-slate-200 uppercase tracking-wide">Assets &amp; allocation</h2>
                 <p class="text-xs text-slate-400 mt-1">
-                  Configure per-asset allocation, API ID (CoinGecko-style), and your current holdings.
+                  Set target allocation, CoinGecko ID, and your current holdings per asset.
                 </p>
               </div>
-              <button id="addAssetBtn" class="text-xs px-3 py-1.5 rounded-lg bg-slate-800 text-slate-100 hover:bg-slate-700 transition-colors">
-                + Add asset
-              </button>
+              <div class="flex items-center gap-2">
+                <button id="refreshPricesBtnAssets" class="text-xs px-3 py-1.5 rounded-lg border border-slate-700 text-slate-300 hover:border-emerald-500 hover:text-emerald-300 transition-colors">
+                  Refresh prices
+                </button>
+                <button id="addAssetBtn" class="text-xs px-3 py-1.5 rounded-lg bg-slate-800 text-slate-100 hover:bg-slate-700 transition-colors">
+                  + Add asset
+                </button>
+              </div>
             </div>
 
             <div class="overflow-x-auto">
@@ -184,11 +182,18 @@
                 <thead>
                   <tr class="border-b border-slate-800 text-slate-400 text-[11px] uppercase tracking-wide">
                     <th class="py-2 pr-2 text-left">Asset</th>
-                    <th class="py-2 px-2 text-left">API ID</th>
+                    <th class="py-2 px-2 text-left">
+                      CoinGecko ID
+                      <span class="normal-case font-normal text-slate-600 ml-1">↓ see guide</span>
+                    </th>
                     <th class="py-2 px-2 text-right">Allocation %</th>
                     <th class="py-2 px-2 text-right">Units held</th>
                     <th class="py-2 px-2 text-right">Price (USD)</th>
                     <th class="py-2 px-2 text-right">Value (USD)</th>
+                    <th class="py-2 px-2 text-right">
+                      Current %
+                      <span class="normal-case font-normal text-slate-600 ml-1">vs target</span>
+                    </th>
                     <th class="py-2 pl-2 text-right">Actions</th>
                   </tr>
                 </thead>
@@ -198,15 +203,42 @@
               </table>
             </div>
 
+            <div id="pricesFetchStatus" class="hidden mt-3 text-xs text-amber-300 bg-amber-500/10 border border-amber-500/30 rounded-lg px-3 py-2 leading-relaxed"></div>
+
             <div class="mt-3 flex items-center justify-between text-xs text-slate-400">
               <div>
                 <span class="mr-2">Allocation total:</span>
                 <span id="allocationTotal" class="font-semibold text-slate-200">0%</span>
+                <span class="ml-2 text-slate-600">must equal 100%</span>
               </div>
               <button id="rebalanceAllocBtn" class="px-3 py-1 rounded-lg border border-slate-700 text-slate-200 hover:border-emerald-500 hover:text-emerald-300 transition-colors">
-                Normalize to 100%
+                Distribute equally
               </button>
             </div>
+
+            <!-- CoinGecko ID quick-reference -->
+            <details class="mt-3">
+              <summary class="cursor-pointer text-[11px] text-slate-500 hover:text-slate-400 select-none">
+                CoinGecko ID reference (click to expand)
+              </summary>
+              <div class="mt-2 grid grid-cols-2 gap-x-6 gap-y-1 text-[11px] text-slate-500 pl-1">
+                <span>BTC → <code class="text-slate-400">bitcoin</code></span>
+                <span>ETH → <code class="text-slate-400">ethereum</code></span>
+                <span>BNB → <code class="text-slate-400">binancecoin</code></span>
+                <span>SOL → <code class="text-slate-400">solana</code></span>
+                <span>AVAX → <code class="text-emerald-500">avalanche-2</code></span>
+                <span>INJ → <code class="text-emerald-500">injective-protocol</code></span>
+                <span>MATIC → <code class="text-slate-400">matic-network</code></span>
+                <span>DOT → <code class="text-slate-400">polkadot</code></span>
+                <span>ADA → <code class="text-slate-400">cardano</code></span>
+                <span>LINK → <code class="text-slate-400">chainlink</code></span>
+                <span>ATOM → <code class="text-slate-400">cosmos</code></span>
+                <span>UNI → <code class="text-slate-400">uniswap</code></span>
+              </div>
+              <p class="mt-1.5 text-[11px] text-slate-600 pl-1">
+                Full list at <span class="text-slate-500">coingecko.com/en/coins/all</span>
+              </p>
+            </details>
           </div>
 
           <!-- Step calculator -->
@@ -229,15 +261,15 @@
                 <button id="refreshPricesBtn" class="px-3 py-1.5 rounded-lg bg-slate-800 text-xs text-slate-100 hover:bg-slate-700 transition-colors">
                   Refresh prices
                 </button>
-                <button id="applyStepBtn" class="px-3 py-1.5 rounded-lg bg-emerald-500 text-xs text-slate-950 font-semibold hover:bg-emerald-400 transition-colors">
-                  Apply step (after trades)
+                <button id="applyStepBtn" title="Execute the suggested trades on your exchange first, then click this to record the step and update your invested total." class="px-3 py-1.5 rounded-lg bg-emerald-500 text-xs text-slate-950 font-semibold hover:bg-emerald-400 transition-colors">
+                  Mark step applied
                 </button>
               </div>
             </div>
 
             <div id="stepError" class="hidden text-xs text-rose-400 bg-rose-500/10 border border-rose-500/40 rounded-lg px-3 py-2"></div>
 
-            <div class="grid md:grid-cols-3 gap-4 text-xs text-slate-300">
+            <div class="grid md:grid-cols-2 gap-6 text-xs text-slate-300">
               <div class="space-y-1.5">
                 <div class="flex justify-between">
                   <span>Current portfolio value</span>
@@ -248,45 +280,40 @@
                   <span id="stepTargetValue" class="font-medium">$0</span>
                 </div>
                 <div class="flex justify-between">
-                  <span>Theoretical change</span>
+                  <span>Gap to target</span>
                   <span id="stepTheoreticalChange" class="font-medium">$0</span>
                 </div>
                 <div class="flex justify-between">
-                  <span>Change after cap</span>
+                  <span>Capped change</span>
                   <span id="stepCappedChange" class="font-medium">$0</span>
                 </div>
               </div>
-
               <div class="space-y-1.5">
                 <div class="flex justify-between">
                   <span>Suggested direction</span>
                   <span id="stepDirection" class="font-medium text-slate-200">–</span>
                 </div>
                 <div class="flex justify-between">
-                  <span>Next period index</span>
+                  <span>Period index</span>
                   <span id="stepPeriodIndex" class="font-medium">–</span>
                 </div>
                 <div class="flex justify-between">
-                  <span>Invested after apply (est)</span>
+                  <span>Total invested if applied</span>
                   <span id="stepEstimatedInvested" class="font-medium">$0</span>
-                </div>
-                <div class="flex justify-between">
-                  <span>P&amp;L after apply (est)</span>
-                  <span id="stepEstimatedPnL" class="font-medium">$0</span>
-                </div>
-              </div>
-
-              <div class="space-y-1.5">
-                <div class="text-[11px] text-slate-400">
-                  Interpretation:
-                  <ul class="mt-1 list-disc list-inside space-y-0.5">
-                    <li><span class="text-emerald-300">Positive change</span> → invest that USD amount.</li>
-                    <li><span class="text-rose-300">Negative change</span> → suggested withdrawal / profit take.</li>
-                    <li>Per-asset trades (below) respect your allocation and the max add cap.</li>
-                  </ul>
                 </div>
               </div>
             </div>
+
+            <details class="mt-1">
+              <summary class="text-[11px] text-slate-500 hover:text-slate-400 cursor-pointer select-none">How it works ↓</summary>
+              <ul class="mt-2 list-disc list-inside space-y-0.5 text-[11px] text-slate-400 pl-1">
+                <li><span class="text-emerald-300">Positive gap</span> → invest the capped amount.</li>
+                <li><span class="text-rose-300">Negative gap</span> → suggested withdrawal / take profit.</li>
+                <li>Per-asset trades below are weighted by allocation and capped to max (±).</li>
+                <li><span class="text-amber-400">⚠ no price</span> in the asset table = wrong CoinGecko ID — see the ID guide in the assets card.</li>
+                <li>"Total invested" only tracks cash committed via <em>Mark step applied</em>. Set it manually if you're importing existing holdings.</li>
+              </ul>
+            </details>
 
             <div class="mt-4 border-t border-slate-800 pt-3">
               <h3 class="text-xs font-semibold text-slate-300 uppercase tracking-wide mb-2">Per-asset suggested trades</h3>
@@ -331,7 +358,7 @@
                 <th class="py-2 pr-2 text-left">Date</th>
                 <th class="py-2 px-2 text-right">Period</th>
                 <th class="py-2 px-2 text-right">Invested</th>
-                <th class="py-2 px-2 text-right">Portfolio value</th>
+                <th class="py-2 px-2 text-right">Est. value at step</th>
                 <th class="py-2 px-2 text-right">P&amp;L</th>
                 <th class="py-2 pl-2 text-right">P&amp;L %</th>
               </tr>
