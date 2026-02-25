@@ -297,9 +297,12 @@
                   <span>Period index</span>
                   <span id="stepPeriodIndex" class="font-medium">–</span>
                 </div>
-                <div class="flex justify-between">
-                  <span>Total invested if applied</span>
-                  <span id="stepEstimatedInvested" class="font-medium">$0</span>
+                <div class="flex justify-between items-baseline gap-2">
+                  <span>Invested after step</span>
+                  <span class="text-right">
+                    <span id="stepEstimatedInvested" class="font-medium">$0</span>
+                    <span id="stepEstimatedBreakdown" class="block text-[10px] text-slate-500"></span>
+                  </span>
                 </div>
               </div>
             </div>
@@ -360,7 +363,8 @@
                 <th class="py-2 px-2 text-right">Invested</th>
                 <th class="py-2 px-2 text-right">Est. value at step</th>
                 <th class="py-2 px-2 text-right">P&amp;L</th>
-                <th class="py-2 pl-2 text-right">P&amp;L %</th>
+                <th class="py-2 px-2 text-right">P&amp;L %</th>
+                <th class="py-2 pl-2 text-right"></th>
               </tr>
             </thead>
             <tbody id="historyTableBody" class="divide-y divide-slate-800">

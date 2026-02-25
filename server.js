@@ -207,6 +207,22 @@ app.delete('/api/history', (req, res) => {
   }
 });
 
+// Delete a single snapshot by id
+app.delete('/api/history/:id', (req, res) => {
+  const id = Number(req.params.id);
+  if (!Number.isInteger(id) || id <= 0) {
+    return res.status(400).json({ error: 'Invalid id' });
+  }
+  try {
+    const result = db.prepare('DELETE FROM snapshots WHERE id = ?').run(id);
+    if (result.changes === 0) return res.status(404).json({ error: 'Record not found' });
+    res.json({ ok: true });
+  } catch (err) {
+    console.error('DB error on DELETE /api/history/:id', err.message);
+    res.status(500).json({ error: 'Failed to delete record' });
+  }
+});
+
 app.listen(PORT, () => {
   console.log(`Server listening on port ${PORT}`);
   console.log(`Using SQLite database at ${dbPath}`);
