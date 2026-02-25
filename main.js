@@ -91,22 +91,24 @@ function formatPercent(value) {
 
 function getElements() {
   return {
-    // Summary
+    // Header
     lastUpdated: document.getElementById('lastUpdated'),
-    currentValue: document.getElementById('currentValue'),
-    investedAmount: document.getElementById('investedAmount'),
-    pnlValue: document.getElementById('pnlValue'),
-    pnlPercent: document.getElementById('pnlPercent'),
 
-    summaryPeriods: document.getElementById('summaryPeriods'),
-    summaryCurrentPeriod: document.getElementById('summaryCurrentPeriod'),
-    summaryPeriodTarget: document.getElementById('summaryPeriodTarget'),
-    summaryMax: document.getElementById('summaryMax'),
+    // Hero
+    heroPeriod: document.getElementById('heroPeriod'),
+    heroDirectionBadge: document.getElementById('heroDirectionBadge'),
+    heroAmount: document.getElementById('heroAmount'),
+    heroCurrentValue: document.getElementById('heroCurrentValue'),
+    heroTargetValue: document.getElementById('heroTargetValue'),
+    heroGap: document.getElementById('heroGap'),
+    heroCappedNote: document.getElementById('heroCappedNote'),
+    heroCap: document.getElementById('heroCap'),
 
-    nextTargetValue: document.getElementById('nextTargetValue'),
-    nextTheoretical: document.getElementById('nextTheoretical'),
-    nextRecommended: document.getElementById('nextRecommended'),
-    nextDirection: document.getElementById('nextDirection'),
+    // Stats row
+    statPortfolioValue: document.getElementById('statPortfolioValue'),
+    statInvested: document.getElementById('statInvested'),
+    statPnL: document.getElementById('statPnL'),
+    statPnLPct: document.getElementById('statPnLPct'),
 
     // Config inputs
     initialValueInput: document.getElementById('initialValueInput'),
@@ -115,38 +117,34 @@ function getElements() {
     completedPeriodsInput: document.getElementById('completedPeriodsInput'),
     investedSoFarInput: document.getElementById('investedSoFarInput'),
 
-    // Assets
+    // Assets table
     assetsTableBody: document.getElementById('assetsTableBody'),
     allocationTotal: document.getElementById('allocationTotal'),
 
-    // Step section
-    stepError: document.getElementById('stepError'),
+    // Trades panel
+    tradesEmpty: document.getElementById('tradesEmpty'),
+    tradesContent: document.getElementById('tradesContent'),
+    tradesTableBody: document.getElementById('tradesTableBody'),
     stepCurrentValue: document.getElementById('stepCurrentValue'),
     stepTargetValue: document.getElementById('stepTargetValue'),
-    stepTheoreticalChange: document.getElementById('stepTheoreticalChange'),
-    stepCappedChange: document.getElementById('stepCappedChange'),
-    stepDirection: document.getElementById('stepDirection'),
-    stepPeriodIndex: document.getElementById('stepPeriodIndex'),
     stepEstimatedInvested: document.getElementById('stepEstimatedInvested'),
     stepEstimatedBreakdown: document.getElementById('stepEstimatedBreakdown'),
-    pricesFetchStatus: document.getElementById('pricesFetchStatus'),
 
-    tradesTableBody: document.getElementById('tradesTableBody'),
+    // Step error
+    stepError: document.getElementById('stepError'),
+    pricesFetchStatus: document.getElementById('pricesFetchStatus'),
 
     // History
     historyTableBody: document.getElementById('historyTableBody'),
     historyError: document.getElementById('historyError'),
 
-    // Other inputs
+    // Buttons & controls
     priceProviderSelect: document.getElementById('priceProviderSelect'),
     refreshHistoryBtn: document.getElementById('refreshHistoryBtn'),
-
-    // Buttons
     saveConfigBtn: document.getElementById('saveConfigBtn'),
     addAssetBtn: document.getElementById('addAssetBtn'),
     rebalanceAllocBtn: document.getElementById('rebalanceAllocBtn'),
     refreshPricesBtn: document.getElementById('refreshPricesBtn'),
-    refreshPricesBtnAssets: document.getElementById('refreshPricesBtnAssets'),
     applyStepBtn: document.getElementById('applyStepBtn'),
     resetAllBtn: document.getElementById('resetAllBtn'),
   };
@@ -276,52 +274,87 @@ function computePnL() {
 
 function renderSummaryAndNextStep() {
   const { currentValue, invested, pnl, pnlPct } = computePnL();
+  const { config } = state;
 
-  els.currentValue.textContent = formatUSD(currentValue);
-  els.investedAmount.textContent = formatUSD(invested);
-  els.pnlValue.textContent = formatUSD(pnl);
-  els.pnlValue.className =
-    'text-lg md:text-xl font-semibold ' +
+  // ── Stats row ──────────────────────────────────────────────────
+  els.statPortfolioValue.textContent = formatUSD(currentValue);
+  els.statInvested.textContent = formatUSD(invested);
+
+  els.statPnL.textContent = (pnl >= 0 ? '+' : '') + formatUSD(pnl);
+  els.statPnL.className =
+    'text-xl font-bold ' +
     (pnl > 0 ? 'text-emerald-300' : pnl < 0 ? 'text-rose-300' : 'text-slate-200');
-  els.pnlPercent.textContent = formatPercent(pnlPct);
-  els.pnlPercent.className =
-    'text-xs font-medium ' +
+
+  els.statPnLPct.textContent = (pnl >= 0 ? '+' : '') + formatPercent(pnlPct);
+  els.statPnLPct.className =
+    'text-xs font-semibold mt-0.5 ' +
     (pnl > 0 ? 'text-emerald-300' : pnl < 0 ? 'text-rose-300' : 'text-slate-400');
 
-  const { config } = state;
-  // Period card: show computed/contextual values rather than raw config echoes.
-  const nextPeriod = (config.completedPeriods || 0) + 1;
-  const periodTarget = config.initialValue + nextPeriod * config.stepPerPeriod;
-  els.summaryPeriods.textContent = String(config.completedPeriods ?? 0);
-  els.summaryCurrentPeriod.textContent = String(nextPeriod);
-  els.summaryPeriodTarget.textContent = formatUSD(periodTarget);
-  els.summaryMax.textContent = formatUSD(config.maxAddition);
+  // ── Hero section ───────────────────────────────────────────────
+  // Reuse computeStepDetails so hero and trades section always agree.
+  const { targetValue, theoreticalChange, cappedChange, direction, nextPeriodIndex } =
+    computeStepDetails();
 
-  // Reuse computeStepDetails so the summary and the step section always agree.
-  const { targetValue, theoreticalChange, cappedChange, direction } = computeStepDetails();
+  els.heroPeriod.textContent = String(nextPeriodIndex);
+  els.heroCurrentValue.textContent = formatUSD(currentValue);
+  els.heroTargetValue.textContent = formatUSD(targetValue);
 
-  els.nextTargetValue.textContent = formatUSD(targetValue);
-  els.nextTheoretical.textContent = formatUSD(theoreticalChange);
-  els.nextRecommended.textContent = formatUSD(cappedChange);
+  // Gap shows the raw distance; colour hints at whether we're under or over.
+  els.heroGap.textContent = formatUSD(Math.abs(theoreticalChange));
+  els.heroGap.className =
+    'ml-1 font-medium ' +
+    (theoreticalChange > 0.5
+      ? 'text-emerald-300'
+      : theoreticalChange < -0.5
+      ? 'text-rose-300'
+      : 'text-slate-300');
 
-  let directionText = '— Hold —';
-  if (direction === 'Invest') directionText = `Invest ${formatUSD(cappedChange)}`;
-  else if (direction === 'Withdraw') directionText = `Withdraw ${formatUSD(Math.abs(cappedChange))}`;
-  els.nextDirection.textContent = directionText;
-  // Direction is the primary call-to-action: give it a coloured badge appearance.
-  els.nextDirection.className =
-    'inline-block text-sm font-bold px-3 py-1.5 rounded-lg border ' +
-    (cappedChange > 0
-      ? 'text-emerald-300 bg-emerald-500/10 border-emerald-500/30'
-      : cappedChange < 0
-      ? 'text-rose-300 bg-rose-500/10 border-rose-500/30'
-      : 'text-slate-400 bg-slate-800/60 border-slate-700');
+  // Only show the capped note when the cap actually bites.
+  const isCapped =
+    config.maxAddition > 0 && Math.abs(theoreticalChange) > config.maxAddition + 0.5;
+  els.heroCappedNote.textContent = isCapped
+    ? `(capped from ${formatUSD(Math.abs(theoreticalChange))})`
+    : '';
 
+  els.heroCap.textContent =
+    config.maxAddition > 0 ? `±${formatUSD(config.maxAddition)} per step` : 'not set';
+
+  // Direction badge + big amount — these are the primary visual.
+  if (direction === 'Invest') {
+    els.heroDirectionBadge.textContent = '↑ Invest';
+    els.heroDirectionBadge.className =
+      'shrink-0 px-3 py-1.5 rounded-xl text-sm font-bold uppercase border ' +
+      'text-emerald-300 bg-emerald-500/10 border-emerald-500/30';
+    els.heroAmount.textContent = formatUSD(cappedChange);
+    els.heroAmount.className = 'text-4xl font-bold tracking-tight text-emerald-300';
+  } else if (direction === 'Withdraw') {
+    els.heroDirectionBadge.textContent = '↓ Withdraw';
+    els.heroDirectionBadge.className =
+      'shrink-0 px-3 py-1.5 rounded-xl text-sm font-bold uppercase border ' +
+      'text-rose-300 bg-rose-500/10 border-rose-500/30';
+    els.heroAmount.textContent = formatUSD(Math.abs(cappedChange));
+    els.heroAmount.className = 'text-4xl font-bold tracking-tight text-rose-300';
+  } else {
+    els.heroDirectionBadge.textContent = '— Hold';
+    els.heroDirectionBadge.className =
+      'shrink-0 px-3 py-1.5 rounded-xl text-sm font-bold uppercase border ' +
+      'text-slate-400 bg-slate-800/60 border-slate-700';
+    els.heroAmount.textContent = 'On target';
+    els.heroAmount.className = 'text-2xl font-semibold tracking-tight text-slate-400 self-center';
+  }
+
+  // ── Header timestamp ───────────────────────────────────────────
   if (state.lastPricesFetch) {
     const date = new Date(state.lastPricesFetch);
-    els.lastUpdated.textContent = `Last updated: ${date.toLocaleString()}`;
+    const minsAgo = Math.round((Date.now() - date.getTime()) / 60000);
+    els.lastUpdated.textContent =
+      minsAgo < 1
+        ? 'Prices: just now'
+        : minsAgo < 60
+        ? `Prices: ${minsAgo}m ago`
+        : `Prices: ${date.toLocaleTimeString()}`;
   } else {
-    els.lastUpdated.textContent = 'Last updated: –';
+    els.lastUpdated.textContent = 'Prices not yet loaded · refresh to start';
   }
 }
 
@@ -369,14 +402,19 @@ function renderStepDetailsAndTrades() {
   els.stepError.textContent = '';
 
   if (!assets.length) {
-    els.stepError.textContent = 'Please add at least one asset.';
+    els.stepError.textContent = 'Add at least one asset to calculate suggested trades.';
     els.stepError.classList.remove('hidden');
+    els.tradesEmpty.classList.remove('hidden');
+    els.tradesContent.classList.add('hidden');
     return;
   }
 
   if (!config.stepPerPeriod || config.stepPerPeriod <= 0) {
-    els.stepError.textContent = 'Please configure a valid step per period.';
+    els.stepError.textContent =
+      'Set a Step size in Plan settings to calculate your next action.';
     els.stepError.classList.remove('hidden');
+    els.tradesEmpty.classList.remove('hidden');
+    els.tradesContent.classList.add('hidden');
     return;
   }
 
@@ -384,61 +422,72 @@ function renderStepDetailsAndTrades() {
   const totalAlloc = assets.reduce((s, a) => s + (Number(a.allocation) || 0), 0);
   if (Math.abs(totalAlloc - 100) > 0.1) {
     els.stepError.textContent =
-      `Allocation total is ${totalAlloc.toFixed(1)}% — normalize to exactly 100% for accurate per-asset trade suggestions.`;
+      `Allocation total is ${totalAlloc.toFixed(1)}% — it must equal exactly 100% for per-asset trade amounts to be correct.`;
     els.stepError.classList.remove('hidden');
-    // Don't return: still render the computed values so the user can see them.
+    // Don't return: still render so the user can see the effect.
   }
 
   const details = computeStepDetails();
+  const hasAction = Math.abs(details.cappedChange) >= 0.5;
+
+  // Show/hide the trades panel vs the "no action" placeholder.
+  els.tradesEmpty.classList.toggle('hidden', hasAction);
+  els.tradesContent.classList.toggle('hidden', !hasAction);
+
+  // Always update the step summary numbers (used inside tradesContent).
   els.stepCurrentValue.textContent = formatUSD(details.currentValue);
   els.stepTargetValue.textContent = formatUSD(details.targetValue);
-  els.stepTheoreticalChange.textContent = formatUSD(details.theoreticalChange);
-  els.stepCappedChange.textContent = formatUSD(details.cappedChange);
-  els.stepPeriodIndex.textContent = String(details.nextPeriodIndex);
   els.stepEstimatedInvested.textContent = formatUSD(details.estimatedInvested);
-  // Show the formula so it's clear this is a projection, not a change to the stored value.
   if (els.stepEstimatedBreakdown) {
-    const current = state.config.investedSoFar || 0;
+    const current = config.investedSoFar || 0;
     const step = details.cappedChange;
     const sign = step >= 0 ? '+' : '−';
-    els.stepEstimatedBreakdown.textContent = `${formatUSD(current)} ${sign} ${formatUSD(Math.abs(step))}`;
+    els.stepEstimatedBreakdown.textContent =
+      `${formatUSD(current)} ${sign} ${formatUSD(Math.abs(step))}`;
   }
 
-  els.stepDirection.textContent =
-    details.direction === 'Invest'
-      ? `Invest ${formatUSD(details.cappedChange)}`
-      : details.direction === 'Withdraw'
-      ? `Withdraw ${formatUSD(Math.abs(details.cappedChange))}`
-      : 'Hold';
-  els.stepDirection.className =
-    'font-medium ' +
-    (details.cappedChange > 0
-      ? 'text-emerald-300'
-      : details.cappedChange < 0
-      ? 'text-rose-300'
-      : 'text-slate-200');
+  if (!hasAction) return;
 
+  // ── Per-asset trades table ─────────────────────────────────────
   const trades = computePerAssetTrades(details);
-
   els.tradesTableBody.innerHTML = '';
   const fragment = document.createDocumentFragment();
 
   trades.forEach((t) => {
     const tr = document.createElement('tr');
-    tr.className = 'hover:bg-slate-800/60';
+    tr.className = 'hover:bg-slate-800/30';
+
+    const isBuy = t.suggestedValue > 0.5;
+    const isSell = t.suggestedValue < -0.5;
+    const actionBadge = isBuy
+      ? '<span class="text-[10px] font-bold text-emerald-300 bg-emerald-500/10 ' +
+        'border border-emerald-500/30 rounded px-1.5 py-0.5">BUY</span>'
+      : isSell
+      ? '<span class="text-[10px] font-bold text-rose-300 bg-rose-500/10 ' +
+        'border border-rose-500/30 rounded px-1.5 py-0.5">SELL</span>'
+      : '<span class="text-[10px] text-slate-600">—</span>';
+
+    const amountText =
+      Math.abs(t.suggestedValue) >= 0.5
+        ? formatUSD(Math.abs(t.suggestedValue))
+        : '—';
+    const amountClass = isBuy
+      ? 'text-emerald-300 font-medium'
+      : isSell
+      ? 'text-rose-300 font-medium'
+      : 'text-slate-600';
+
+    const units = t.suggestedUnits;
+    const unitsText =
+      Number.isFinite(units) && Math.abs(units) >= 1e-8
+        ? (units > 0 ? '+' : '') + units.toFixed(6)
+        : '—';
+
     tr.innerHTML = `
-      <td class="py-2 pr-2 text-slate-100">${escapeHtml(t.symbol)}</td>
-      <td class="py-2 px-2 text-right text-slate-200">${formatUSD(t.targetValue)}</td>
-      <td class="py-2 px-2 text-right text-slate-200">${formatUSD(t.currentValue)}</td>
-      <td class="py-2 px-2 text-right ${
-        t.rawDelta >= 0 ? 'text-emerald-300' : 'text-rose-300'
-      }">${formatUSD(t.rawDelta)}</td>
-      <td class="py-2 px-2 text-right ${
-        t.suggestedValue >= 0 ? 'text-emerald-300' : 'text-rose-300'
-      }">${formatUSD(t.suggestedValue)}</td>
-      <td class="py-2 pl-2 text-right text-slate-200">${
-        Number.isFinite(t.suggestedUnits) ? t.suggestedUnits.toFixed(6) : '–'
-      }</td>
+      <td class="py-2 pr-2 text-slate-100 font-medium">${escapeHtml(t.symbol)}</td>
+      <td class="py-2 px-2 text-center">${actionBadge}</td>
+      <td class="py-2 px-2 text-right ${amountClass}">${amountText}</td>
+      <td class="py-2 pl-2 text-right text-slate-500">${unitsText}</td>
     `;
     fragment.appendChild(tr);
   });
@@ -528,11 +577,11 @@ async function fetchPrices() {
     els.pricesFetchStatus.textContent = '';
   }
 
-  // Loading state on both Refresh prices buttons.
+  // Loading state on the Refresh prices button.
   const btn = els.refreshPricesBtn;
-  const btnAssets = els.refreshPricesBtnAssets;
   const origLabel = btn.textContent;
-  [btn, btnAssets].forEach((b) => { if (b) { b.textContent = 'Fetching…'; b.disabled = true; } });
+  btn.textContent = 'Fetching…';
+  btn.disabled = true;
 
   const provider = state.priceProvider || 'coingecko';
 
@@ -588,7 +637,8 @@ async function fetchPrices() {
       'Failed to fetch prices. Please check your connection or try again in a moment.';
     els.stepError.classList.remove('hidden');
   } finally {
-    [btn, btnAssets].forEach((b) => { if (b) { b.textContent = origLabel; b.disabled = false; } });
+    btn.textContent = origLabel;
+    btn.disabled = false;
   }
 }
 
@@ -799,12 +849,6 @@ function attachEventListeners() {
     fetchPrices();
   });
 
-  if (els.refreshPricesBtnAssets) {
-    els.refreshPricesBtnAssets.addEventListener('click', () => {
-      fetchPrices();
-    });
-  }
-
   els.applyStepBtn.addEventListener('click', () => {
     const details = computeStepDetails();
     const { config } = state;
@@ -818,6 +862,11 @@ function attachEventListeners() {
 
     // Persist a snapshot on the backend
     createSnapshotFromStep(details);
+
+    // Remind user to update their holdings after executing trades.
+    showToast(
+      'Step recorded ✓  Update your asset units in Holdings to reflect the trades you executed.'
+    );
   });
 
   els.resetAllBtn.addEventListener('click', async () => {
@@ -837,7 +886,7 @@ function attachEventListeners() {
     fetchHistory();
   });
 
-  ['initialValueInput', 'stepInput', 'maxAdditionInput', 'periodsPerMonthInput', 'completedPeriodsInput', 'investedSoFarInput'].forEach(
+  ['initialValueInput', 'stepInput', 'maxAdditionInput', 'completedPeriodsInput', 'investedSoFarInput'].forEach(
     (key) => {
       const input = els[key];
       if (!input) return;
@@ -890,6 +939,21 @@ function attachEventListeners() {
   }
 }
 
+let _toastTimer = null;
+function showToast(message, duration = 5000) {
+  const toast = document.getElementById('toast');
+  const msg = document.getElementById('toastMsg');
+  if (!toast || !msg) return;
+  msg.textContent = message;
+  toast.style.opacity = '1';
+  toast.style.pointerEvents = 'auto';
+  clearTimeout(_toastTimer);
+  _toastTimer = setTimeout(() => {
+    toast.style.opacity = '0';
+    toast.style.pointerEvents = 'none';
+  }, duration);
+}
+
 function init() {
   syncConfigInputsFromState();
   renderAssetsTable();
@@ -898,6 +962,13 @@ function init() {
   attachEventListeners();
   fetchPrices();
   fetchHistory();
+
+  // Auto-open settings panel for first-time users who haven't configured anything yet.
+  const isFirstRun = !state.config.initialValue && !state.config.stepPerPeriod;
+  if (isFirstRun) {
+    const panel = document.getElementById('settingsPanel');
+    if (panel) panel.open = true;
+  }
 }
 
 document.addEventListener('DOMContentLoaded', init);
