@@ -651,12 +651,25 @@ function attachEventListeners() {
       asset[field] = String(target.value || '').trim();
     } else if (field === 'allocation') {
       asset.allocation = Number(target.value) || 0;
+      // Surgically update the allocation total without re-rendering the table.
+      const total = state.assets.reduce((s, a) => s + (Number(a.allocation) || 0), 0);
+      els.allocationTotal.textContent = `${total.toFixed(1)}%`;
+      els.allocationTotal.className =
+        'font-semibold ' +
+        (Math.abs(total - 100) < 0.01 ? 'text-emerald-300' : 'text-amber-300');
     } else if (field === 'units') {
       asset.units = Number(target.value) || 0;
+      // Surgically update only the value cell (cells[5]) for this row.
+      const tr = target.closest('tr');
+      if (tr && tr.cells[5]) {
+        tr.cells[5].textContent =
+          asset.price && asset.units ? formatUSD(asset.price * asset.units) : '–';
+      }
     }
 
     saveState();
-    renderAssetsTable();
+    // Do NOT call renderAssetsTable() here — it destroys all inputs and loses
+    // cursor position. Only the computed panels below the table need updating.
     renderSummaryAndNextStep();
     renderStepDetailsAndTrades();
   });
