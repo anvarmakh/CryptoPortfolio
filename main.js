@@ -98,10 +98,10 @@ function getElements() {
     pnlValue: document.getElementById('pnlValue'),
     pnlPercent: document.getElementById('pnlPercent'),
 
-    summaryInitialTarget: document.getElementById('summaryInitialTarget'),
-    summaryStep: document.getElementById('summaryStep'),
-    summaryMax: document.getElementById('summaryMax'),
     summaryPeriods: document.getElementById('summaryPeriods'),
+    summaryCurrentPeriod: document.getElementById('summaryCurrentPeriod'),
+    summaryPeriodTarget: document.getElementById('summaryPeriodTarget'),
+    summaryMax: document.getElementById('summaryMax'),
 
     nextTargetValue: document.getElementById('nextTargetValue'),
     nextTheoretical: document.getElementById('nextTheoretical'),
@@ -112,7 +112,6 @@ function getElements() {
     initialValueInput: document.getElementById('initialValueInput'),
     stepInput: document.getElementById('stepInput'),
     maxAdditionInput: document.getElementById('maxAdditionInput'),
-    periodsPerMonthInput: document.getElementById('periodsPerMonthInput'),
     completedPeriodsInput: document.getElementById('completedPeriodsInput'),
     investedSoFarInput: document.getElementById('investedSoFarInput'),
 
@@ -159,7 +158,7 @@ function syncConfigInputsFromState() {
   els.initialValueInput.value = config.initialValue || '';
   els.stepInput.value = config.stepPerPeriod || '';
   els.maxAdditionInput.value = config.maxAddition || '';
-  els.periodsPerMonthInput.value = config.periodsPerMonth || '';
+  // periodsPerMonth is kept in state for backwards-compat but no longer shown in the UI.
   els.completedPeriodsInput.value = config.completedPeriods || '';
   els.investedSoFarInput.value = config.investedSoFar || '';
   if (els.priceProviderSelect) {
@@ -172,7 +171,7 @@ function syncStateFromConfigInputs() {
   cfg.initialValue = Number(els.initialValueInput.value) || 0;
   cfg.stepPerPeriod = Number(els.stepInput.value) || 0;
   cfg.maxAddition = Number(els.maxAdditionInput.value) || 0;
-  cfg.periodsPerMonth = Math.max(1, Number(els.periodsPerMonthInput.value) || 2);
+  // periodsPerMonth no longer editable in UI; preserve whatever is in state.
   cfg.completedPeriods = Math.max(0, Number(els.completedPeriodsInput.value) || 0);
   const manualInvested = els.investedSoFarInput.value;
   if (manualInvested !== '') {
@@ -289,10 +288,13 @@ function renderSummaryAndNextStep() {
     (pnl > 0 ? 'text-emerald-300' : pnl < 0 ? 'text-rose-300' : 'text-slate-400');
 
   const { config } = state;
-  els.summaryInitialTarget.textContent = formatUSD(config.initialValue);
-  els.summaryStep.textContent = formatUSD(config.stepPerPeriod);
-  els.summaryMax.textContent = formatUSD(config.maxAddition);
+  // Period card: show computed/contextual values rather than raw config echoes.
+  const nextPeriod = (config.completedPeriods || 0) + 1;
+  const periodTarget = config.initialValue + nextPeriod * config.stepPerPeriod;
   els.summaryPeriods.textContent = String(config.completedPeriods ?? 0);
+  els.summaryCurrentPeriod.textContent = String(nextPeriod);
+  els.summaryPeriodTarget.textContent = formatUSD(periodTarget);
+  els.summaryMax.textContent = formatUSD(config.maxAddition);
 
   // Reuse computeStepDetails so the summary and the step section always agree.
   const { targetValue, theoreticalChange, cappedChange, direction } = computeStepDetails();
@@ -301,17 +303,18 @@ function renderSummaryAndNextStep() {
   els.nextTheoretical.textContent = formatUSD(theoreticalChange);
   els.nextRecommended.textContent = formatUSD(cappedChange);
 
-  let directionText = 'Hold';
+  let directionText = '— Hold —';
   if (direction === 'Invest') directionText = `Invest ${formatUSD(cappedChange)}`;
   else if (direction === 'Withdraw') directionText = `Withdraw ${formatUSD(Math.abs(cappedChange))}`;
   els.nextDirection.textContent = directionText;
+  // Direction is the primary call-to-action: give it a coloured badge appearance.
   els.nextDirection.className =
-    'font-medium ' +
+    'inline-block text-sm font-bold px-3 py-1.5 rounded-lg border ' +
     (cappedChange > 0
-      ? 'text-emerald-300'
+      ? 'text-emerald-300 bg-emerald-500/10 border-emerald-500/30'
       : cappedChange < 0
-      ? 'text-rose-300'
-      : 'text-slate-300');
+      ? 'text-rose-300 bg-rose-500/10 border-rose-500/30'
+      : 'text-slate-400 bg-slate-800/60 border-slate-700');
 
   if (state.lastPricesFetch) {
     const date = new Date(state.lastPricesFetch);
