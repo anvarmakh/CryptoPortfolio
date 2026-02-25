@@ -128,6 +128,7 @@ function getElements() {
     stepDirection: document.getElementById('stepDirection'),
     stepPeriodIndex: document.getElementById('stepPeriodIndex'),
     stepEstimatedInvested: document.getElementById('stepEstimatedInvested'),
+    stepEstimatedBreakdown: document.getElementById('stepEstimatedBreakdown'),
     pricesFetchStatus: document.getElementById('pricesFetchStatus'),
 
     tradesTableBody: document.getElementById('tradesTableBody'),
@@ -395,6 +396,13 @@ function renderStepDetailsAndTrades() {
   els.stepCappedChange.textContent = formatUSD(details.cappedChange);
   els.stepPeriodIndex.textContent = String(details.nextPeriodIndex);
   els.stepEstimatedInvested.textContent = formatUSD(details.estimatedInvested);
+  // Show the formula so it's clear this is a projection, not a change to the stored value.
+  if (els.stepEstimatedBreakdown) {
+    const current = state.config.investedSoFar || 0;
+    const step = details.cappedChange;
+    const sign = step >= 0 ? '+' : '−';
+    els.stepEstimatedBreakdown.textContent = `${formatUSD(current)} ${sign} ${formatUSD(Math.abs(step))}`;
+  }
 
   els.stepDirection.textContent =
     details.direction === 'Invest'
@@ -609,7 +617,7 @@ function renderHistory(rows) {
   if (!Array.isArray(rows) || !rows.length) {
     const tr = document.createElement('tr');
     tr.innerHTML =
-      '<td colspan="6" class="py-3 px-2 text-center text-xs text-slate-500">No snapshots yet. Apply a step to create the first one.</td>';
+      '<td colspan="7" class="py-3 px-2 text-center text-xs text-slate-500">No snapshots yet. Apply a step to create the first one.</td>';
     els.historyTableBody.appendChild(tr);
     return;
   }
@@ -629,6 +637,9 @@ function renderHistory(rows) {
       <td class="py-2 px-2 text-right text-slate-200">${formatUSD(row.portfolio_value)}</td>
       <td class="py-2 px-2 text-right ${pnlClass}">${formatUSD(row.pnl)}</td>
       <td class="py-2 px-2 text-right ${pnlClass}">${formatPercent(row.pnl_percent)}</td>
+      <td class="py-2 pl-2 text-right">
+        <button data-id="${row.id}" class="history-delete-btn text-[11px] text-slate-500 hover:text-rose-400 transition-colors px-1.5 py-0.5 rounded hover:bg-rose-500/10 border border-transparent hover:border-rose-500/30" title="Delete this record">✕</button>
+      </td>
     `;
 
     fragment.appendChild(tr);
@@ -850,6 +861,31 @@ function attachEventListeners() {
   if (els.refreshHistoryBtn) {
     els.refreshHistoryBtn.addEventListener('click', () => {
       fetchHistory();
+    });
+  }
+
+  // Per-row delete: single delegated listener on the table body.
+  if (els.historyTableBody) {
+    els.historyTableBody.addEventListener('click', async (e) => {
+      const btn = e.target.closest('.history-delete-btn');
+      if (!btn) return;
+      const id = Number(btn.dataset.id);
+      if (!id) return;
+      btn.disabled = true;
+      btn.textContent = '…';
+      try {
+        const res = await fetch(`/api/history/${id}`, { method: 'DELETE' });
+        if (!res.ok) throw new Error(await res.text());
+        await fetchHistory();
+      } catch (err) {
+        console.error('Failed to delete history record', err);
+        btn.disabled = false;
+        btn.textContent = '✕';
+        if (els.historyError) {
+          els.historyError.textContent = 'Failed to delete record.';
+          els.historyError.classList.remove('hidden');
+        }
+      }
     });
   }
 }
