@@ -282,7 +282,7 @@ function renderSummaryAndNextStep() {
 
   els.statPnL.textContent = (pnl >= 0 ? '+' : '') + formatUSD(pnl);
   els.statPnL.className =
-    'text-xl font-bold ' +
+    'text-sm sm:text-xl font-bold ' +
     (pnl > 0 ? 'text-emerald-300' : pnl < 0 ? 'text-rose-300' : 'text-slate-200');
 
   els.statPnLPct.textContent = (pnl >= 0 ? '+' : '') + formatPercent(pnlPct);
@@ -326,21 +326,21 @@ function renderSummaryAndNextStep() {
       'shrink-0 px-3 py-1.5 rounded-xl text-sm font-bold uppercase border ' +
       'text-emerald-300 bg-emerald-500/10 border-emerald-500/30';
     els.heroAmount.textContent = formatUSD(cappedChange);
-    els.heroAmount.className = 'text-4xl font-bold tracking-tight text-emerald-300';
+    els.heroAmount.className = 'text-3xl sm:text-4xl font-bold tracking-tight text-emerald-300';
   } else if (direction === 'Withdraw') {
     els.heroDirectionBadge.textContent = '↓ Withdraw';
     els.heroDirectionBadge.className =
       'shrink-0 px-3 py-1.5 rounded-xl text-sm font-bold uppercase border ' +
       'text-rose-300 bg-rose-500/10 border-rose-500/30';
     els.heroAmount.textContent = formatUSD(Math.abs(cappedChange));
-    els.heroAmount.className = 'text-4xl font-bold tracking-tight text-rose-300';
+    els.heroAmount.className = 'text-3xl sm:text-4xl font-bold tracking-tight text-rose-300';
   } else {
     els.heroDirectionBadge.textContent = '— Hold';
     els.heroDirectionBadge.className =
       'shrink-0 px-3 py-1.5 rounded-xl text-sm font-bold uppercase border ' +
       'text-slate-400 bg-slate-800/60 border-slate-700';
     els.heroAmount.textContent = 'On target';
-    els.heroAmount.className = 'text-2xl font-semibold tracking-tight text-slate-400 self-center';
+    els.heroAmount.className = 'text-xl sm:text-2xl font-semibold tracking-tight text-slate-400 self-center';
   }
 
   // ── Header timestamp ───────────────────────────────────────────
