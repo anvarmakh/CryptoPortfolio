@@ -237,7 +237,7 @@ function renderAssetsTable() {
                class="w-20 md:w-24 rounded-md border border-slate-700 bg-slate-900/80 px-2 py-1 text-xs text-slate-100 focus:outline-none focus:ring-1 focus:ring-emerald-500/70 focus:border-emerald-400"
                value="${escapeAttr(asset.symbol)}" />
       </td>
-      <td class="py-2 px-2">
+      <td class="py-2 px-2 hidden sm:table-cell">
         <input data-index="${index}" data-field="id" type="text"
                class="w-32 md:w-40 rounded-md border border-slate-700 bg-slate-900/80 px-2 py-1 text-xs text-slate-100 focus:outline-none focus:ring-1 focus:ring-emerald-500/70 focus:border-emerald-400"
                value="${escapeAttr(asset.id)}" placeholder="e.g. bitcoin, avalanche-2" />
@@ -247,7 +247,7 @@ function renderAssetsTable() {
                class="number-input w-20 rounded-md border border-slate-700 bg-slate-900/80 px-2 py-1 text-xs text-right text-slate-100 focus:outline-none focus:ring-1 focus:ring-emerald-500/70 focus:border-emerald-400"
                value="${escapeAttr(asset.allocation ?? '')}" />
       </td>
-      <td class="py-2 px-2 text-right">
+      <td class="py-2 px-2 text-right hidden sm:table-cell">
         <input data-index="${index}" data-field="units" type="number" step="0.00000001"
                class="number-input w-24 rounded-md border border-slate-700 bg-slate-900/80 px-2 py-1 text-xs text-right text-slate-100 focus:outline-none focus:ring-1 focus:ring-emerald-500/70 focus:border-emerald-400"
                value="${escapeAttr(asset.units ?? '')}" />
