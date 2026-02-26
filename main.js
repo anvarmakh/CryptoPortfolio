@@ -57,6 +57,29 @@ function saveState() {
   } catch (e) {
     console.error('Failed to save state', e);
   }
+  scheduleServerSync();
+}
+
+// ── Server-side state sync ────────────────────────────────────────────────────
+// Debounce server writes so rapid edits (e.g. typing in a field) don't spam
+// the API. The localStorage write above is instant; the server follows ~500 ms later.
+let _serverSyncTimer = null;
+
+function scheduleServerSync() {
+  clearTimeout(_serverSyncTimer);
+  _serverSyncTimer = setTimeout(syncStateToServer, 500);
+}
+
+async function syncStateToServer() {
+  try {
+    await fetch('/api/state', {
+      method: 'PUT',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(state),
+    });
+  } catch (e) {
+    console.error('Failed to sync state to server', e);
+  }
 }
 
 function formatUSD(value) {
@@ -736,6 +759,13 @@ async function createSnapshotFromStep(details) {
           theoreticalChange: details.theoreticalChange,
           cappedChange: details.cappedChange,
         },
+        holdings: state.assets.map((a) => ({
+          symbol: a.symbol,
+          id: a.id,
+          allocation: a.allocation,
+          units: a.units,
+          price: a.price,
+        })),
       },
     };
 
@@ -782,7 +812,16 @@ async function createInitialSnapshot() {
       portfolioValue,
       pnl,
       pnlPercent,
-      meta: { type: 'initial' },
+      meta: {
+        type: 'initial',
+        holdings: state.assets.map((a) => ({
+          symbol: a.symbol,
+          id: a.id,
+          allocation: a.allocation,
+          units: a.units,
+          price: a.price,
+        })),
+      },
     };
 
     const res = await fetch('/api/history', {
@@ -1011,12 +1050,43 @@ function showToast(message, duration = 5000) {
   }, duration);
 }
 
-function init() {
+async function init() {
+  // Render immediately from localStorage so the UI isn't blank while we wait
+  // for the network request.
   syncConfigInputsFromState();
   renderAssetsTable();
   renderSummaryAndNextStep();
   renderStepDetailsAndTrades();
   attachEventListeners();
+
+  // Fetch server state — it is the source of truth so holdings persist across
+  // devices. If the server has a saved state we merge it in and re-render.
+  try {
+    const res = await fetch('/api/state');
+    if (res.ok) {
+      const serverState = await res.json();
+      if (serverState && typeof serverState === 'object') {
+        state = {
+          ...structuredClone(defaultState),
+          ...serverState,
+          config: { ...structuredClone(defaultState.config), ...(serverState.config || {}) },
+          assets:
+            Array.isArray(serverState.assets) && serverState.assets.length
+              ? serverState.assets
+              : structuredClone(defaultState.assets),
+        };
+        // Update localStorage to match so the next load is fast.
+        try { localStorage.setItem(STORAGE_KEY, JSON.stringify(state)); } catch (_e) {}
+        syncConfigInputsFromState();
+        renderAssetsTable();
+        renderSummaryAndNextStep();
+        renderStepDetailsAndTrades();
+      }
+    }
+  } catch (e) {
+    console.warn('Could not load state from server — using local state', e);
+  }
+
   fetchPrices();
   fetchHistory();
 

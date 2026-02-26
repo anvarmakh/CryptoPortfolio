@@ -36,6 +36,12 @@ db.exec(`
     pnl_percent REAL NOT NULL,
     meta TEXT
   );
+
+  CREATE TABLE IF NOT EXISTS app_state (
+    id INTEGER PRIMARY KEY CHECK (id = 1),
+    state_json TEXT NOT NULL,
+    updated_at TEXT NOT NULL
+  );
 `);
 
 app.use(cors());
@@ -47,6 +53,38 @@ app.get('/main.js', (_req, res) => res.sendFile(path.join(__dirname, 'main.js'))
 
 app.get('/health', (req, res) => {
   res.json({ status: 'ok' });
+});
+
+// App state: persist the full frontend state server-side so it survives
+// across different devices and browsers.
+app.get('/api/state', (req, res) => {
+  try {
+    const row = db.prepare('SELECT state_json FROM app_state WHERE id = 1').get();
+    if (!row) return res.json(null);
+    res.json(JSON.parse(row.state_json));
+  } catch (err) {
+    console.error('DB error on GET /api/state', err.message);
+    res.status(500).json({ error: 'Failed to retrieve state' });
+  }
+});
+
+app.put('/api/state', (req, res) => {
+  const body = req.body;
+  if (!body || typeof body !== 'object' || Array.isArray(body)) {
+    return res.status(400).json({ error: 'Invalid state payload' });
+  }
+  try {
+    const stateJson = JSON.stringify(body);
+    const now = new Date().toISOString();
+    db.prepare(`
+      INSERT INTO app_state (id, state_json, updated_at) VALUES (1, ?, ?)
+      ON CONFLICT(id) DO UPDATE SET state_json = excluded.state_json, updated_at = excluded.updated_at
+    `).run(stateJson, now);
+    res.json({ ok: true });
+  } catch (err) {
+    console.error('DB error on PUT /api/state', err.message);
+    res.status(500).json({ error: 'Failed to save state' });
+  }
 });
 
 // Price proxy: supports provider=coingecko or provider=cmc
