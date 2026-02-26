@@ -146,6 +146,9 @@ function getElements() {
     rebalanceAllocBtn: document.getElementById('rebalanceAllocBtn'),
     refreshPricesBtn: document.getElementById('refreshPricesBtn'),
     applyStepBtn: document.getElementById('applyStepBtn'),
+    trackCurrentStateBtn: document.getElementById('trackCurrentStateBtn'),
+    stepHint: document.getElementById('stepHint'),
+    trackHint: document.getElementById('trackHint'),
     resetAllBtn: document.getElementById('resetAllBtn'),
   };
 }
@@ -664,10 +667,18 @@ function renderHistory(rows) {
   if (!els.historyTableBody) return;
   els.historyTableBody.innerHTML = '';
 
-  if (!Array.isArray(rows) || !rows.length) {
+  const isEmpty = !Array.isArray(rows) || !rows.length;
+
+  // Toggle between "track current state" (no history) and "mark step applied" (has history)
+  if (els.trackCurrentStateBtn) els.trackCurrentStateBtn.classList.toggle('hidden', !isEmpty);
+  if (els.applyStepBtn) els.applyStepBtn.classList.toggle('hidden', isEmpty);
+  if (els.stepHint) els.stepHint.classList.toggle('hidden', isEmpty);
+  if (els.trackHint) els.trackHint.classList.toggle('hidden', !isEmpty);
+
+  if (isEmpty) {
     const tr = document.createElement('tr');
     tr.innerHTML =
-      '<td colspan="7" class="py-3 px-2 text-center text-xs text-slate-500">No snapshots yet. Apply a step to create the first one.</td>';
+      '<td colspan="7" class="py-3 px-2 text-center text-xs text-slate-500">No snapshots yet. Track current state to create the first one.</td>';
     els.historyTableBody.appendChild(tr);
     return;
   }
@@ -752,6 +763,46 @@ async function createSnapshotFromStep(details) {
     }
   } finally {
     els.applyStepBtn.disabled = false;
+  }
+}
+
+async function createInitialSnapshot() {
+  if (els.trackCurrentStateBtn) els.trackCurrentStateBtn.disabled = true;
+  try {
+    const { config } = state;
+    const portfolioValue = computePortfolioValue();
+    const invested = config.investedSoFar || 0;
+    const pnl = portfolioValue - invested;
+    const pnlPercent = invested !== 0 ? (pnl / invested) * 100 : 0;
+
+    const payload = {
+      createdAt: new Date().toISOString(),
+      periodIndex: 0,
+      invested,
+      portfolioValue,
+      pnl,
+      pnlPercent,
+      meta: { type: 'initial' },
+    };
+
+    const res = await fetch('/api/history', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(payload),
+    });
+
+    if (!res.ok) throw new Error(`Snapshot save failed: ${res.status}`);
+    await res.json();
+    await fetchHistory();
+    showToast('Current state recorded ✓  Now apply steps to track your value-averaging progress.');
+  } catch (err) {
+    console.error(err);
+    if (els.historyError) {
+      els.historyError.textContent = 'Failed to save initial snapshot to the server.';
+      els.historyError.classList.remove('hidden');
+    }
+  } finally {
+    if (els.trackCurrentStateBtn) els.trackCurrentStateBtn.disabled = false;
   }
 }
 
@@ -848,6 +899,12 @@ function attachEventListeners() {
   els.refreshPricesBtn.addEventListener('click', () => {
     fetchPrices();
   });
+
+  if (els.trackCurrentStateBtn) {
+    els.trackCurrentStateBtn.addEventListener('click', () => {
+      createInitialSnapshot();
+    });
+  }
 
   els.applyStepBtn.addEventListener('click', () => {
     const details = computeStepDetails();
