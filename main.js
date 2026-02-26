@@ -12,17 +12,14 @@ const defaultState = {
     completedPeriods: 0,
     investedSoFar: 0,
   },
-  priceProvider: 'coingecko',
   assets: [
     {
-      id: 'bitcoin',
       symbol: 'BTC',
       allocation: 60,
       units: 0,
       price: 0,
     },
     {
-      id: 'ethereum',
       symbol: 'ETH',
       allocation: 40,
       units: 0,
@@ -34,16 +31,87 @@ const defaultState = {
 
 let state = loadState();
 
+// Whether at least one history snapshot exists — controls units-column lock.
+let _hasHistory = false;
+
+// ── Ticker → CoinGecko ID mapping ────────────────────────────────────────────
+const TICKER_TO_COINGECKO_ID = {
+  BTC: 'bitcoin',
+  ETH: 'ethereum',
+  SOL: 'solana',
+  BNB: 'binancecoin',
+  XRP: 'ripple',
+  DOGE: 'dogecoin',
+  ADA: 'cardano',
+  TRX: 'tron',
+  AVAX: 'avalanche-2',
+  LINK: 'chainlink',
+  DOT: 'polkadot',
+  MATIC: 'matic-network',
+  POL: 'matic-network',
+  SHIB: 'shiba-inu',
+  LTC: 'litecoin',
+  UNI: 'uniswap',
+  ATOM: 'cosmos',
+  TON: 'the-open-network',
+  OP: 'optimism',
+  ARB: 'arbitrum',
+  FTM: 'fantom',
+  NEAR: 'near',
+  APT: 'aptos',
+  SUI: 'sui',
+  INJ: 'injective-protocol',
+  PEPE: 'pepe',
+  WIF: 'dogwifcoin',
+  BONK: 'bonk',
+  JUP: 'jupiter-exchange-solana',
+  SEI: 'sei-network',
+  TIA: 'celestia',
+  PYTH: 'pyth-network',
+  STX: 'blockstack',
+  IMX: 'immutable-x',
+  RUNE: 'thorchain',
+  FET: 'fetch-ai',
+  RENDER: 'render-token',
+  GRT: 'the-graph',
+  LDO: 'lido-dao',
+  MKR: 'maker',
+  AAVE: 'aave',
+  SNX: 'havven',
+  CRV: 'curve-dao-token',
+  COMP: 'compound-governance-token',
+  ALGO: 'algorand',
+  XLM: 'stellar',
+  VET: 'vechain',
+  HBAR: 'hedera-hashgraph',
+  ICP: 'internet-computer',
+  FIL: 'filecoin',
+  SAND: 'the-sandbox',
+  MANA: 'decentraland',
+  AXS: 'axie-infinity',
+  CHZ: 'chiliz',
+};
+
+function tickerToId(symbol) {
+  const upper = String(symbol || '').toUpperCase().trim();
+  return TICKER_TO_COINGECKO_ID[upper] || upper.toLowerCase();
+}
+
 function loadState() {
   try {
     const raw = localStorage.getItem(STORAGE_KEY);
     if (!raw) return structuredClone(defaultState);
     const parsed = JSON.parse(raw);
+    // Normalise assets: drop legacy `id` field from display-perspective,
+    // keep it in memory for backward compat; it will be re-derived on price fetch.
+    const assets = Array.isArray(parsed.assets) && parsed.assets.length
+      ? parsed.assets
+      : structuredClone(defaultState.assets);
     return {
       ...structuredClone(defaultState),
       ...parsed,
       config: { ...structuredClone(defaultState.config), ...(parsed.config || {}) },
-      assets: Array.isArray(parsed.assets) && parsed.assets.length ? parsed.assets : structuredClone(defaultState.assets),
+      assets,
     };
   } catch (e) {
     console.error('Failed to load state, using defaults', e);
@@ -61,8 +129,6 @@ function saveState() {
 }
 
 // ── Server-side state sync ────────────────────────────────────────────────────
-// Debounce server writes so rapid edits (e.g. typing in a field) don't spam
-// the API. The localStorage write above is instant; the server follows ~500 ms later.
 let _serverSyncTimer = null;
 
 function scheduleServerSync() {
@@ -92,14 +158,12 @@ function formatUSD(value) {
   return new Intl.NumberFormat('en-US', opts).format(value);
 }
 
-// Escape a string for safe use inside an HTML attribute (value="...").
 function escapeAttr(v) {
   return String(v == null ? '' : v)
     .replace(/&/g, '&amp;')
     .replace(/"/g, '&quot;');
 }
 
-// Escape a string for safe use as HTML text content.
 function escapeHtml(v) {
   return String(v == null ? '' : v)
     .replace(/&/g, '&amp;')
@@ -162,11 +226,9 @@ function getElements() {
     historyError: document.getElementById('historyError'),
 
     // Buttons & controls
-    priceProviderSelect: document.getElementById('priceProviderSelect'),
     refreshHistoryBtn: document.getElementById('refreshHistoryBtn'),
     saveConfigBtn: document.getElementById('saveConfigBtn'),
     addAssetBtn: document.getElementById('addAssetBtn'),
-    rebalanceAllocBtn: document.getElementById('rebalanceAllocBtn'),
     refreshPricesBtn: document.getElementById('refreshPricesBtn'),
     applyStepBtn: document.getElementById('applyStepBtn'),
     trackCurrentStateBtn: document.getElementById('trackCurrentStateBtn'),
@@ -183,12 +245,8 @@ function syncConfigInputsFromState() {
   els.initialValueInput.value = config.initialValue || '';
   els.stepInput.value = config.stepPerPeriod || '';
   els.maxAdditionInput.value = config.maxAddition || '';
-  // periodsPerMonth is kept in state for backwards-compat but no longer shown in the UI.
   els.completedPeriodsInput.value = config.completedPeriods || '';
   els.investedSoFarInput.value = config.investedSoFar || '';
-  if (els.priceProviderSelect) {
-    els.priceProviderSelect.value = state.priceProvider || 'coingecko';
-  }
 }
 
 function syncStateFromConfigInputs() {
@@ -196,7 +254,6 @@ function syncStateFromConfigInputs() {
   cfg.initialValue = Number(els.initialValueInput.value) || 0;
   cfg.stepPerPeriod = Number(els.stepInput.value) || 0;
   cfg.maxAddition = Number(els.maxAdditionInput.value) || 0;
-  // periodsPerMonth no longer editable in UI; preserve whatever is in state.
   cfg.completedPeriods = Math.max(0, Number(els.completedPeriodsInput.value) || 0);
   const manualInvested = els.investedSoFarInput.value;
   if (manualInvested !== '') {
@@ -208,8 +265,8 @@ function renderAssetsTable() {
   els.assetsTableBody.innerHTML = '';
   const fragment = document.createDocumentFragment();
 
-  // Pre-compute total portfolio value so each row can show its actual weight.
   const totalPortfolioValue = computePortfolioValue();
+  const unitsLocked = _hasHistory;
 
   state.assets.forEach((asset, index) => {
     const tr = document.createElement('tr');
@@ -231,26 +288,29 @@ function renderAssetsTable() {
       </td>`;
     }
 
+    // Units input: editable only before any history is recorded
+    const unitsInputClass =
+      'number-input w-24 rounded-md border px-2 py-1 text-xs text-right focus:outline-none ' +
+      (unitsLocked
+        ? 'border-slate-800 bg-slate-900/40 text-slate-500 cursor-not-allowed'
+        : 'border-slate-700 bg-slate-900/80 text-slate-100 focus:ring-1 focus:ring-emerald-500/70 focus:border-emerald-400');
+
     tr.innerHTML = `
       <td class="py-2 pr-2">
         <input data-index="${index}" data-field="symbol" type="text"
                class="w-20 md:w-24 rounded-md border border-slate-700 bg-slate-900/80 px-2 py-1 text-xs text-slate-100 focus:outline-none focus:ring-1 focus:ring-emerald-500/70 focus:border-emerald-400"
                value="${escapeAttr(asset.symbol)}" />
       </td>
-      <td class="py-2 px-2 hidden sm:table-cell">
-        <input data-index="${index}" data-field="id" type="text"
-               class="w-32 md:w-40 rounded-md border border-slate-700 bg-slate-900/80 px-2 py-1 text-xs text-slate-100 focus:outline-none focus:ring-1 focus:ring-emerald-500/70 focus:border-emerald-400"
-               value="${escapeAttr(asset.id)}" placeholder="e.g. bitcoin, avalanche-2" />
-      </td>
       <td class="py-2 px-2 text-right">
         <input data-index="${index}" data-field="allocation" type="number" step="0.1"
                class="number-input w-20 rounded-md border border-slate-700 bg-slate-900/80 px-2 py-1 text-xs text-right text-slate-100 focus:outline-none focus:ring-1 focus:ring-emerald-500/70 focus:border-emerald-400"
                value="${escapeAttr(asset.allocation ?? '')}" />
       </td>
-      <td class="py-2 px-2 text-right hidden sm:table-cell">
+      <td class="py-2 px-2 text-right">
         <input data-index="${index}" data-field="units" type="number" step="0.00000001"
-               class="number-input w-24 rounded-md border border-slate-700 bg-slate-900/80 px-2 py-1 text-xs text-right text-slate-100 focus:outline-none focus:ring-1 focus:ring-emerald-500/70 focus:border-emerald-400"
-               value="${escapeAttr(asset.units ?? '')}" />
+               class="${unitsInputClass}"
+               value="${escapeAttr(asset.units ?? '')}"
+               ${unitsLocked ? 'readonly title="Units are locked once history has been recorded. Use Suggested Trades to update holdings."' : ''} />
       </td>
       <td class="py-2 px-2 text-right ${asset.price ? 'text-slate-200' : (state.lastPricesFetch ? 'text-amber-400' : 'text-slate-500')}">
         ${asset.price
@@ -317,7 +377,6 @@ function renderSummaryAndNextStep() {
     (pnl > 0 ? 'text-emerald-300' : pnl < 0 ? 'text-rose-300' : 'text-slate-400');
 
   // ── Hero section ───────────────────────────────────────────────
-  // Reuse computeStepDetails so hero and trades section always agree.
   const { targetValue, theoreticalChange, cappedChange, direction, nextPeriodIndex } =
     computeStepDetails();
 
@@ -325,7 +384,6 @@ function renderSummaryAndNextStep() {
   els.heroCurrentValue.textContent = formatUSD(currentValue);
   els.heroTargetValue.textContent = formatUSD(targetValue);
 
-  // Gap shows the raw distance; colour hints at whether we're under or over.
   els.heroGap.textContent = formatUSD(Math.abs(theoreticalChange));
   els.heroGap.className =
     'ml-1 font-medium ' +
@@ -335,7 +393,6 @@ function renderSummaryAndNextStep() {
       ? 'text-rose-300'
       : 'text-slate-300');
 
-  // Only show the capped note when the cap actually bites.
   const isCapped =
     config.maxAddition > 0 && Math.abs(theoreticalChange) > config.maxAddition + 0.5;
   els.heroCappedNote.textContent = isCapped
@@ -345,7 +402,6 @@ function renderSummaryAndNextStep() {
   els.heroCap.textContent =
     config.maxAddition > 0 ? `±${formatUSD(config.maxAddition)} per step` : 'no cap';
 
-  // Direction badge + big amount — these are the primary visual.
   if (direction === 'Invest') {
     els.heroDirectionBadge.textContent = '↑ Invest';
     els.heroDirectionBadge.className =
@@ -396,7 +452,6 @@ function computeStepDetails() {
     if (theoreticalChange > config.maxAddition) {
       cappedChange = config.maxAddition;
     } else if (theoreticalChange < -config.maxAddition) {
-      // Apply the cap symmetrically: a large withdrawal is also capped.
       cappedChange = -config.maxAddition;
     }
   }
@@ -405,11 +460,7 @@ function computeStepDetails() {
   if (cappedChange > 0.5) direction = 'Invest';
   else if (cappedChange < -0.5) direction = 'Withdraw';
 
-  // "Invested if applied" = what investedSoFar will become after clicking Apply Step.
   const estimatedInvested = (config.investedSoFar || 0) + cappedChange;
-  // Note: estimatedPnL is intentionally NOT included here — by value-averaging design,
-  // P&L (currentValue − invested) does not change when you make a perfectly-sized
-  // step investment: both sides of the equation increase by the same cappedChange.
 
   return {
     currentValue,
@@ -444,23 +495,19 @@ function renderStepDetailsAndTrades() {
     return;
   }
 
-  // Warn when allocations don't sum to 100% — trades will be mis-weighted.
   const totalAlloc = assets.reduce((s, a) => s + (Number(a.allocation) || 0), 0);
   if (Math.abs(totalAlloc - 100) > 0.1) {
     els.stepError.textContent =
       `Allocation total is ${totalAlloc.toFixed(1)}% — it must equal exactly 100% for per-asset trade amounts to be correct.`;
     els.stepError.classList.remove('hidden');
-    // Don't return: still render so the user can see the effect.
   }
 
   const details = computeStepDetails();
   const hasAction = Math.abs(details.cappedChange) >= 0.5;
 
-  // Show/hide the trades panel vs the "no action" placeholder.
   els.tradesEmpty.classList.toggle('hidden', hasAction);
   els.tradesContent.classList.toggle('hidden', !hasAction);
 
-  // Always update the step summary numbers (used inside tradesContent).
   els.stepCurrentValue.textContent = formatUSD(details.currentValue);
   els.stepTargetValue.textContent = formatUSD(details.targetValue);
   els.stepEstimatedInvested.textContent = formatUSD(details.estimatedInvested);
@@ -474,7 +521,7 @@ function renderStepDetailsAndTrades() {
 
   if (!hasAction) return;
 
-  // ── Per-asset trades table ─────────────────────────────────────
+  // ── Per-asset trades table with units-delta entry ──────────────
   const trades = computePerAssetTrades(details);
   els.tradesTableBody.innerHTML = '';
   const fragment = document.createDocumentFragment();
@@ -503,17 +550,22 @@ function renderStepDetailsAndTrades() {
       ? 'text-rose-300 font-medium'
       : 'text-slate-600';
 
-    const units = t.suggestedUnits;
-    const unitsText =
-      Number.isFinite(units) && Math.abs(units) >= 1e-8
-        ? (units > 0 ? '+' : '') + units.toFixed(6)
-        : '—';
+    // Pre-fill the units-delta input with the suggested units value
+    const suggestedUnitsVal =
+      Number.isFinite(t.suggestedUnits) && Math.abs(t.suggestedUnits) >= 1e-8
+        ? t.suggestedUnits.toFixed(6)
+        : '';
 
     tr.innerHTML = `
       <td class="py-2 pr-2 text-slate-100 font-medium">${escapeHtml(t.symbol)}</td>
       <td class="py-2 px-2 text-center">${actionBadge}</td>
       <td class="py-2 px-2 text-right ${amountClass}">${amountText}</td>
-      <td class="py-2 pl-2 text-right text-slate-500">${unitsText}</td>
+      <td class="py-2 pl-2 text-right">
+        <input data-asset-index="${t.assetIndex}" type="number" step="0.00000001"
+               class="number-input w-24 rounded-md border border-slate-700 bg-slate-900/80 px-2 py-1 text-xs text-right text-slate-100 focus:outline-none focus:ring-1 focus:ring-emerald-500/70 focus:border-emerald-400"
+               value="${escapeAttr(suggestedUnitsVal)}"
+               placeholder="0" />
+      </td>
     `;
     fragment.appendChild(tr);
   });
@@ -525,7 +577,7 @@ function computePerAssetTrades(stepDetails) {
   const { targetValue, cappedChange } = stepDetails;
   const { assets } = state;
 
-  const trades = assets.map((a) => {
+  const trades = assets.map((a, assetIndex) => {
     const allocation = Number(a.allocation) || 0;
     const units = Number(a.units) || 0;
     const price = Number(a.price) || 0;
@@ -535,7 +587,7 @@ function computePerAssetTrades(stepDetails) {
     const rawDelta = targetAssetValue - currentAssetValue;
 
     return {
-      id: a.id,
+      assetIndex,
       symbol: a.symbol,
       allocation,
       price,
@@ -576,22 +628,22 @@ function computePerAssetTrades(stepDetails) {
 async function fetchPrices() {
   const assets = state.assets || [];
 
-  // Deduplicate as pairs keyed by id so uniqueIds[i] always corresponds to uniqueSymbols[i].
+  // Derive CoinGecko IDs from ticker symbols and deduplicate.
   const seenIds = new Set();
   const uniqueIds = [];
-  const uniqueSymbols = [];
 
   assets.forEach((a) => {
-    const id = typeof a.id === 'string' ? a.id.trim() : '';
+    const id = tickerToId(a.symbol);
+    // Also update asset.id for snapshot metadata storage
+    a.id = id;
     if (id && !seenIds.has(id)) {
       seenIds.add(id);
       uniqueIds.push(id);
-      uniqueSymbols.push(String(a.symbol || '').trim().toUpperCase());
     }
   });
 
   if (!uniqueIds.length) {
-    els.stepError.textContent = 'Please set CoinGecko IDs (e.g. bitcoin, ethereum) for your assets.';
+    els.stepError.textContent = 'Please add assets with valid ticker symbols to fetch prices.';
     els.stepError.classList.remove('hidden');
     return;
   }
@@ -603,18 +655,13 @@ async function fetchPrices() {
     els.pricesFetchStatus.textContent = '';
   }
 
-  // Loading state on the Refresh prices button.
   const btn = els.refreshPricesBtn;
   const origLabel = btn.textContent;
   btn.textContent = 'Fetching…';
   btn.disabled = true;
 
-  const provider = state.priceProvider || 'coingecko';
-
   const params = new URLSearchParams();
-  params.set('provider', provider);
   params.set('ids', uniqueIds.join(','));
-  params.set('symbols', uniqueSymbols.join(','));
 
   try {
     const res = await fetch(`/api/prices?${params.toString()}`);
@@ -623,32 +670,29 @@ async function fetchPrices() {
     }
     const data = await res.json();
 
-    // Track which IDs the API actually returned prices for.
     const returnedIds = new Set(Object.keys(data));
 
     state.assets.forEach((asset) => {
-      const id = asset.id;
+      const id = tickerToId(asset.symbol);
       if (id && data[id] && typeof data[id].usd === 'number') {
         asset.price = data[id].usd;
       }
     });
 
-    // Identify assets whose IDs were sent but got no price back.
+    // Identify assets whose ticker didn't resolve to a known CoinGecko ID
     const failedAssets = state.assets.filter((a) => {
-      const id = typeof a.id === 'string' ? a.id.trim() : '';
+      const id = tickerToId(a.symbol);
       return id && !returnedIds.has(id);
     });
 
     if (failedAssets.length > 0 && els.pricesFetchStatus) {
       const list = failedAssets
-        .map((a) => `<strong>${escapeHtml(a.symbol || a.id)}</strong> (ID: <code>${escapeHtml(a.id)}</code>)`)
+        .map((a) => `<strong>${escapeHtml(a.symbol)}</strong>`)
         .join(', ');
       els.pricesFetchStatus.innerHTML =
         `Price not found for: ${list}. ` +
-        `Check the CoinGecko ID — common fixes: ` +
-        `AVAX&nbsp;→&nbsp;<code>avalanche-2</code>, ` +
-        `INJ&nbsp;→&nbsp;<code>injective-protocol</code>, ` +
-        `MATIC&nbsp;→&nbsp;<code>matic-network</code>.`;
+        `The ticker may not be recognized by CoinGecko. ` +
+        `Common fixes: AVAX (not AVALANCHE), POL/MATIC (interchangeable).`;
       els.pricesFetchStatus.classList.remove('hidden');
     }
 
@@ -691,6 +735,13 @@ function renderHistory(rows) {
   els.historyTableBody.innerHTML = '';
 
   const isEmpty = !Array.isArray(rows) || !rows.length;
+  const hadHistory = _hasHistory;
+  _hasHistory = !isEmpty;
+
+  // Re-render assets table if history state changed (to lock/unlock units column)
+  if (_hasHistory !== hadHistory) {
+    renderAssetsTable();
+  }
 
   // Toggle between "track current state" (no history) and "mark step applied" (has history)
   if (els.trackCurrentStateBtn) els.trackCurrentStateBtn.classList.toggle('hidden', !isEmpty);
@@ -742,7 +793,8 @@ async function createSnapshotFromStep(details) {
     const { config } = state;
     const periodIndex = config.completedPeriods || 0;
     const investedAfter = config.investedSoFar || 0;
-    const portfolioValueAfter = details.currentValue + details.cappedChange;
+    // Use actual portfolio value (units already updated before this call)
+    const portfolioValueAfter = computePortfolioValue();
     const pnl = portfolioValueAfter - investedAfter;
     const pnlPercent = investedAfter !== 0 ? (pnl / investedAfter) * 100 : 0;
 
@@ -761,7 +813,6 @@ async function createSnapshotFromStep(details) {
         },
         holdings: state.assets.map((a) => ({
           symbol: a.symbol,
-          id: a.id,
           allocation: a.allocation,
           units: a.units,
           price: a.price,
@@ -771,9 +822,7 @@ async function createSnapshotFromStep(details) {
 
     const res = await fetch('/api/history', {
       method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-      },
+      headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify(payload),
     });
 
@@ -781,8 +830,7 @@ async function createSnapshotFromStep(details) {
       throw new Error(`History save failed: ${res.status}`);
     }
 
-    await res.json(); // consume the response
-    // Always re-fetch the full list so the table stays consistent with the server.
+    await res.json();
     await fetchHistory();
   } catch (err) {
     console.error(err);
@@ -816,7 +864,6 @@ async function createInitialSnapshot() {
         type: 'initial',
         holdings: state.assets.map((a) => ({
           symbol: a.symbol,
-          id: a.id,
           allocation: a.allocation,
           units: a.units,
           price: a.price,
@@ -851,7 +898,6 @@ function attachEventListeners() {
     saveState();
     renderSummaryAndNextStep();
     renderStepDetailsAndTrades();
-    // Brief visual confirmation.
     const orig = els.saveConfigBtn.textContent;
     els.saveConfigBtn.textContent = 'Saved ✓';
     els.saveConfigBtn.classList.replace('bg-emerald-500', 'bg-emerald-700');
@@ -863,7 +909,6 @@ function attachEventListeners() {
 
   els.addAssetBtn.addEventListener('click', () => {
     state.assets.push({
-      id: '',
       symbol: '',
       allocation: 0,
       units: 0,
@@ -884,29 +929,26 @@ function attachEventListeners() {
     const asset = state.assets[index];
     if (!asset) return;
 
-    if (field === 'symbol' || field === 'id') {
-      asset[field] = String(target.value || '').trim();
+    if (field === 'symbol') {
+      asset.symbol = String(target.value || '').trim();
     } else if (field === 'allocation') {
       asset.allocation = Number(target.value) || 0;
-      // Surgically update the allocation total without re-rendering the table.
       const total = state.assets.reduce((s, a) => s + (Number(a.allocation) || 0), 0);
       els.allocationTotal.textContent = `${total.toFixed(1)}%`;
       els.allocationTotal.className =
         'font-semibold ' +
         (Math.abs(total - 100) < 0.01 ? 'text-emerald-300' : 'text-amber-300');
-    } else if (field === 'units') {
+    } else if (field === 'units' && !_hasHistory) {
       asset.units = Number(target.value) || 0;
-      // Surgically update only the value cell (cells[5]) for this row.
+      // Surgically update the value cell (cells[4] after ID column removal)
       const tr = target.closest('tr');
-      if (tr && tr.cells[5]) {
-        tr.cells[5].textContent =
+      if (tr && tr.cells[4]) {
+        tr.cells[4].textContent =
           asset.price && asset.units ? formatUSD(asset.price * asset.units) : '–';
       }
     }
 
     saveState();
-    // Do NOT call renderAssetsTable() here — it destroys all inputs and loses
-    // cursor position. Only the computed panels below the table need updating.
     renderSummaryAndNextStep();
     renderStepDetailsAndTrades();
   });
@@ -917,18 +959,6 @@ function attachEventListeners() {
     const index = Number(btn.getAttribute('data-index'));
     if (!Number.isInteger(index)) return;
     state.assets.splice(index, 1);
-    saveState();
-    renderAssetsTable();
-    renderSummaryAndNextStep();
-    renderStepDetailsAndTrades();
-  });
-
-  els.rebalanceAllocBtn.addEventListener('click', () => {
-    if (!state.assets.length) return;
-    const equal = 100 / state.assets.length;
-    state.assets.forEach((a) => {
-      a.allocation = equal;
-    });
     saveState();
     renderAssetsTable();
     renderSummaryAndNextStep();
@@ -948,32 +978,41 @@ function attachEventListeners() {
   els.applyStepBtn.addEventListener('click', () => {
     const details = computeStepDetails();
     const { config } = state;
+
+    // Read units-delta from the trades table inputs and update asset holdings
+    const deltaInputs = els.tradesTableBody.querySelectorAll('input[data-asset-index]');
+    deltaInputs.forEach((input) => {
+      const assetIndex = Number(input.getAttribute('data-asset-index'));
+      const delta = Number(input.value) || 0;
+      if (Number.isInteger(assetIndex) && state.assets[assetIndex]) {
+        state.assets[assetIndex].units =
+          (Number(state.assets[assetIndex].units) || 0) + delta;
+      }
+    });
+
     config.completedPeriods = (config.completedPeriods || 0) + 1;
     config.investedSoFar = (config.investedSoFar || 0) + details.cappedChange;
     els.investedSoFarInput.value = config.investedSoFar;
 
     saveState();
+    renderAssetsTable();
     renderSummaryAndNextStep();
     renderStepDetailsAndTrades();
 
-    // Persist a snapshot on the backend
     createSnapshotFromStep(details);
 
-    // Remind user to update their holdings after executing trades.
-    showToast(
-      'Step recorded ✓  Update your asset units in Holdings to reflect the trades you executed.'
-    );
+    showToast('Step recorded ✓  Holdings updated with entered units.');
   });
 
   els.resetAllBtn.addEventListener('click', async () => {
     if (!window.confirm('Reset all configuration and data? This cannot be undone.')) return;
     state = structuredClone(defaultState);
+    _hasHistory = false;
     saveState();
     syncConfigInputsFromState();
     renderAssetsTable();
     renderSummaryAndNextStep();
     renderStepDetailsAndTrades();
-    // Also wipe server-side history so the table doesn't repopulate on reload.
     try {
       await fetch('/api/history', { method: 'DELETE' });
     } catch (err) {
@@ -995,21 +1034,12 @@ function attachEventListeners() {
     }
   );
 
-  if (els.priceProviderSelect) {
-    els.priceProviderSelect.addEventListener('change', () => {
-      state.priceProvider = els.priceProviderSelect.value || 'coingecko';
-      saveState();
-      fetchPrices();
-    });
-  }
-
   if (els.refreshHistoryBtn) {
     els.refreshHistoryBtn.addEventListener('click', () => {
       fetchHistory();
     });
   }
 
-  // Per-row delete: single delegated listener on the table body.
   if (els.historyTableBody) {
     els.historyTableBody.addEventListener('click', async (e) => {
       const btn = e.target.closest('.history-delete-btn');
@@ -1051,16 +1081,12 @@ function showToast(message, duration = 5000) {
 }
 
 async function init() {
-  // Render immediately from localStorage so the UI isn't blank while we wait
-  // for the network request.
   syncConfigInputsFromState();
   renderAssetsTable();
   renderSummaryAndNextStep();
   renderStepDetailsAndTrades();
   attachEventListeners();
 
-  // Fetch server state — it is the source of truth so holdings persist across
-  // devices. If the server has a saved state we merge it in and re-render.
   try {
     const res = await fetch('/api/state');
     if (res.ok) {
@@ -1075,7 +1101,6 @@ async function init() {
               ? serverState.assets
               : structuredClone(defaultState.assets),
         };
-        // Update localStorage to match so the next load is fast.
         try { localStorage.setItem(STORAGE_KEY, JSON.stringify(state)); } catch (_e) {}
         syncConfigInputsFromState();
         renderAssetsTable();
@@ -1090,7 +1115,6 @@ async function init() {
   fetchPrices();
   fetchHistory();
 
-  // Auto-open settings panel for first-time users who haven't configured anything yet.
   const isFirstRun = !state.config.initialValue && !state.config.stepPerPeriod;
   if (isFirstRun) {
     const panel = document.getElementById('settingsPanel');
@@ -1100,7 +1124,7 @@ async function init() {
 
 // ── Font toggle ──────────────────────────────────────────────────────────────
 (function initFontToggle() {
-  const STORAGE_KEY = 'va_font';
+  const FONT_KEY = 'va_font';
   const MONO_CLASS = 'font-mono-mode';
 
   const sansBtn = document.getElementById('fontSansBtn');
@@ -1108,7 +1132,6 @@ async function init() {
 
   function applyFont(mono) {
     document.body.classList.toggle(MONO_CLASS, mono);
-    // Active button: filled/bright. Inactive: dim.
     if (sansBtn && monoBtn) {
       sansBtn.className = mono
         ? 'px-2.5 py-1 text-slate-500 hover:text-slate-300 transition-colors'
@@ -1119,18 +1142,17 @@ async function init() {
     }
   }
 
-  const saved = localStorage.getItem(STORAGE_KEY);
+  const saved = localStorage.getItem(FONT_KEY);
   applyFont(saved === 'mono');
 
   if (sansBtn) sansBtn.addEventListener('click', () => {
-    localStorage.setItem(STORAGE_KEY, 'sans');
+    localStorage.setItem(FONT_KEY, 'sans');
     applyFont(false);
   });
   if (monoBtn) monoBtn.addEventListener('click', () => {
-    localStorage.setItem(STORAGE_KEY, 'mono');
+    localStorage.setItem(FONT_KEY, 'mono');
     applyFont(true);
   });
 })();
 
 document.addEventListener('DOMContentLoaded', init);
-

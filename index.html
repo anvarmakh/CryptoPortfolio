@@ -61,82 +61,42 @@
 
     <!-- ─── HERO: RECOMMENDED ACTION ───────────────────────────── -->
     <section class="rounded-2xl border border-slate-800 bg-slate-900 p-5 sm:p-6 md:p-7">
-      <div class="flex flex-col md:flex-row md:items-start gap-6 md:gap-10">
+      <div class="space-y-3">
+        <div class="text-[11px] font-medium text-slate-500 uppercase tracking-widest">
+          Period <span id="heroPeriod">—</span> · Recommended action
+        </div>
 
-        <!-- Left: the action -->
-        <div class="flex-1 min-w-0 space-y-3">
-          <div class="text-[11px] font-medium text-slate-500 uppercase tracking-widest">
-            Period <span id="heroPeriod">—</span> · Recommended action
+        <!-- Direction badge + amount -->
+        <div class="flex items-center gap-4 flex-wrap">
+          <div id="heroDirectionBadge"
+               class="shrink-0 px-3 py-1.5 rounded-xl text-sm font-bold uppercase border
+                      text-slate-400 bg-slate-800 border-slate-700">
+            —
           </div>
-
-          <!-- Direction badge + amount -->
-          <div class="flex items-center gap-4 flex-wrap">
-            <div id="heroDirectionBadge"
-                 class="shrink-0 px-3 py-1.5 rounded-xl text-sm font-bold uppercase border
-                        text-slate-400 bg-slate-800 border-slate-700">
-              —
-            </div>
-            <div id="heroAmount" class="text-3xl sm:text-4xl font-bold tracking-tight text-slate-400">
-              —
-            </div>
-          </div>
-
-          <!-- Formula context line -->
-          <div class="space-y-1 text-xs leading-relaxed">
-            <div class="text-slate-400">
-              <span class="text-slate-500">Now</span>
-              <span id="heroCurrentValue" class="text-slate-200 ml-1 font-medium">$0</span>
-              <span class="text-slate-700 mx-1.5">→</span>
-              <span class="text-slate-500">Target</span>
-              <span id="heroTargetValue" class="text-slate-200 ml-1 font-medium">$0</span>
-              <!-- Gap drops to a new line on mobile so the formula doesn't overflow -->
-              <br class="sm:hidden">
-              <span class="text-slate-700 mr-1.5 hidden sm:inline">·</span>
-              <span class="text-slate-500">Gap</span>
-              <span id="heroGap" class="ml-1 font-medium text-slate-300">$0</span>
-              <span id="heroCappedNote" class="text-slate-600 ml-1 text-[11px]"></span>
-            </div>
-            <div class="text-slate-500">
-              Max per step: <span id="heroCap" class="text-slate-400">no cap</span>
-            </div>
+          <div id="heroAmount" class="text-3xl sm:text-4xl font-bold tracking-tight text-slate-400">
+            —
           </div>
         </div>
 
-        <!-- Right: action buttons -->
-        <div class="flex flex-col gap-3 md:items-end md:min-w-[200px] shrink-0">
-          <button id="trackCurrentStateBtn"
-                  class="hidden w-full md:w-auto px-5 py-3 sm:py-2.5 min-h-[44px] rounded-xl
-                         bg-sky-500 text-slate-950 text-sm font-bold
-                         hover:bg-sky-400 active:scale-[0.97] transition-all">
-            ◎ Track current state
-          </button>
-          <button id="applyStepBtn"
-                  class="w-full md:w-auto px-5 py-3 sm:py-2.5 min-h-[44px] rounded-xl
-                         bg-emerald-500 text-slate-950 text-sm font-bold
-                         hover:bg-emerald-400 active:scale-[0.97] transition-all">
-            ✓ Mark step applied
-          </button>
-          <div class="flex items-center gap-2">
-            <select id="priceProviderSelect"
-                    class="rounded-lg border border-slate-700 bg-slate-800/80 text-[11px]
-                           text-slate-300 px-2 py-1.5 focus:outline-none focus:ring-1 focus:ring-emerald-500/60">
-              <option value="coingecko">CoinGecko</option>
-              <option value="cmc">CoinMarketCap</option>
-            </select>
-            <button id="refreshPricesBtn"
-                    class="px-3 py-1.5 rounded-lg border border-slate-700 text-xs text-slate-300
-                           hover:border-emerald-600 hover:text-emerald-300 transition-colors">
-              ↻ Refresh prices
-            </button>
+        <!-- Formula context line -->
+        <div class="space-y-1 text-xs leading-relaxed">
+          <div class="text-slate-400">
+            <span class="text-slate-500">Now</span>
+            <span id="heroCurrentValue" class="text-slate-200 ml-1 font-medium">$0</span>
+            <span class="text-slate-700 mx-1.5">→</span>
+            <span class="text-slate-500">Target</span>
+            <span id="heroTargetValue" class="text-slate-200 ml-1 font-medium">$0</span>
+            <!-- Gap drops to a new line on mobile so the formula doesn't overflow -->
+            <br class="sm:hidden">
+            <span class="text-slate-700 mr-1.5 hidden sm:inline">·</span>
+            <span class="text-slate-500">Gap</span>
+            <span id="heroGap" class="ml-1 font-medium text-slate-300">$0</span>
+            <span id="heroCappedNote" class="text-slate-600 ml-1 text-[11px]"></span>
           </div>
-          <p id="stepHint" class="hidden sm:block text-[10px] text-slate-600 md:text-right leading-relaxed">
-            Execute trades on your exchange first,<br>then mark this step applied.
-          </p>
-          <p id="trackHint" class="hidden text-[10px] text-slate-600 md:text-right leading-relaxed">
-            No snapshots yet. Save current state<br>before applying your first step.
-          </p>
+          <div class="text-slate-500">
+            Max per step: <span id="heroCap" class="text-slate-400">no cap</span>
+          </div>
         </div>
-
       </div>
 
       <!-- Error / warning -->
@@ -181,15 +141,10 @@
           <div class="flex items-center gap-2 flex-wrap">
             <span class="text-[11px] text-slate-500">Alloc total:</span>
             <span id="allocationTotal" class="text-xs font-bold text-amber-300">0%</span>
-            <button id="rebalanceAllocBtn"
+            <button id="refreshPricesBtn"
                     class="text-[11px] px-2 py-1 rounded-lg border border-slate-700 text-slate-400
                            hover:text-emerald-300 hover:border-emerald-800 transition-colors">
-              Equal split
-            </button>
-            <button id="addAssetBtn"
-                    class="text-[11px] px-2 py-1 rounded-lg border border-slate-700 text-slate-400
-                           hover:text-slate-200 hover:border-slate-500 transition-colors">
-              + Add asset
+              ↻ Refresh prices
             </button>
           </div>
         </div>
@@ -199,9 +154,8 @@
             <thead>
               <tr class="border-b border-slate-800 text-slate-500 text-[10px] uppercase tracking-wider">
                 <th class="pb-2 pr-2 text-left font-medium">Ticker</th>
-                <th class="pb-2 px-2 text-left font-medium hidden sm:table-cell">CoinGecko ID</th>
                 <th class="pb-2 px-2 text-right font-medium">Target %</th>
-                <th class="pb-2 px-2 text-right font-medium hidden sm:table-cell">Units</th>
+                <th class="pb-2 px-2 text-right font-medium">Units</th>
                 <th class="pb-2 px-2 text-right font-medium">Price</th>
                 <th class="pb-2 px-2 text-right font-medium">Value</th>
                 <th class="pb-2 px-2 text-right font-medium">Actual %</th>
@@ -218,37 +172,20 @@
              class="hidden text-[11px] text-amber-300 bg-amber-500/10 border border-amber-500/30
                     rounded-xl px-3 py-2 leading-relaxed">
         </div>
-
-        <!-- CoinGecko ID guide -->
-        <details class="text-[11px]">
-          <summary class="text-slate-500 hover:text-slate-400 cursor-pointer select-none
-                          flex items-center gap-1.5">
-            <svg class="chevron w-3 h-3 shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-              <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2.5" d="M19 9l-7 7-7-7"/>
-            </svg>
-            CoinGecko ID reference
-          </summary>
-          <div class="mt-2 grid grid-cols-2 gap-x-6 gap-y-0.5 pl-4 text-slate-500">
-            <span>BTC → <code class="text-slate-400">bitcoin</code></span>
-            <span>ETH → <code class="text-slate-400">ethereum</code></span>
-            <span>SOL → <code class="text-slate-400">solana</code></span>
-            <span>BNB → <code class="text-slate-400">binancecoin</code></span>
-            <span>AVAX → <code class="text-emerald-500">avalanche-2</code></span>
-            <span>INJ → <code class="text-emerald-500">injective-protocol</code></span>
-            <span>MATIC → <code class="text-slate-400">matic-network</code></span>
-            <span>DOT → <code class="text-slate-400">polkadot</code></span>
-            <span>ADA → <code class="text-slate-400">cardano</code></span>
-            <span>LINK → <code class="text-slate-400">chainlink</code></span>
-          </div>
-          <p class="mt-1.5 pl-4 text-slate-600">Full list at coingecko.com/en/coins/all</p>
-        </details>
       </div>
 
-      <!-- Trades (2/5) -->
+      <!-- Suggested Trades (2/5) -->
       <div class="lg:col-span-2 rounded-2xl border border-slate-800 bg-slate-900/80 p-4 sm:p-5 space-y-4 min-w-0">
-        <div>
-          <h2 class="text-sm font-semibold text-slate-200">Suggested trades</h2>
-          <p class="text-[11px] text-slate-500 mt-0.5">Per-asset · weighted by allocation</p>
+        <div class="flex items-center justify-between gap-3">
+          <div>
+            <h2 class="text-sm font-semibold text-slate-200">Suggested trades</h2>
+            <p class="text-[11px] text-slate-500 mt-0.5">Per-asset · weighted by allocation</p>
+          </div>
+          <button id="addAssetBtn"
+                  class="text-[11px] px-2 py-1 rounded-lg border border-slate-700 text-slate-400
+                         hover:text-slate-200 hover:border-slate-500 transition-colors shrink-0">
+            + Add asset
+          </button>
         </div>
 
         <!-- Empty / hold state -->
@@ -295,6 +232,29 @@
             </div>
           </div>
         </div>
+
+        <!-- Action buttons -->
+        <div class="border-t border-slate-800 pt-3 flex flex-col gap-2">
+          <button id="trackCurrentStateBtn"
+                  class="hidden w-full px-4 py-2.5 min-h-[40px] rounded-xl
+                         bg-sky-500 text-slate-950 text-sm font-bold
+                         hover:bg-sky-400 active:scale-[0.97] transition-all">
+            ◎ Track current state
+          </button>
+          <button id="applyStepBtn"
+                  class="w-full px-4 py-2.5 min-h-[40px] rounded-xl
+                         bg-emerald-500 text-slate-950 text-sm font-bold
+                         hover:bg-emerald-400 active:scale-[0.97] transition-all">
+            ✓ Mark step applied
+          </button>
+          <p id="stepHint" class="hidden text-[10px] text-slate-600 leading-relaxed">
+            Enter units bought/sold above, then mark step applied.
+          </p>
+          <p id="trackHint" class="hidden text-[10px] text-slate-600 leading-relaxed">
+            No snapshots yet. Track current state before applying your first step.
+          </p>
+        </div>
+
       </div>
 
     </section>
