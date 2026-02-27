@@ -149,13 +149,13 @@ async function syncStateToServer() {
 }
 
 function formatUSD(value) {
-  if (!Number.isFinite(value)) return '$0';
+  if (!Number.isFinite(value)) return '$ 0';
   const opts = {
     style: 'currency',
     currency: 'USD',
     maximumFractionDigits: Math.abs(value) >= 1000 ? 0 : 2,
   };
-  return new Intl.NumberFormat('en-US', opts).format(value);
+  return new Intl.NumberFormat('en-US', opts).format(value).replace('$', '$ ');
 }
 
 function escapeAttr(v) {
