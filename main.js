@@ -270,14 +270,14 @@ function renderAssetsTable() {
     const currentAssetValue = (Number(asset.price) || 0) * (Number(asset.units) || 0);
     const targetPct = Number(asset.allocation) || 0;
 
-    let currentPctCell = '<td class="py-2 px-2 text-right text-slate-500">–</td>';
+    let currentPctCell = '<td class="py-2 px-2 text-right text-slate-500 whitespace-nowrap">–</td>';
     if (totalPortfolioValue > 0 && currentAssetValue > 0) {
       const currentPct = (currentAssetValue / totalPortfolioValue) * 100;
       const drift = Math.abs(currentPct - targetPct);
       const color = drift <= 1 ? 'text-emerald-300' : drift <= 5 ? 'text-amber-300' : 'text-rose-300';
       const driftSign = currentPct >= targetPct ? '+' : '';
       const driftStr = `${driftSign}${(currentPct - targetPct).toFixed(1)}%`;
-      currentPctCell = `<td class="py-2 px-2 text-right">
+      currentPctCell = `<td class="py-2 px-2 text-right whitespace-nowrap">
         <span class="${color} font-medium">${currentPct.toFixed(1)}%</span>
         <span class="text-[10px] text-slate-500 ml-1">${driftStr}</span>
       </td>`;
@@ -286,10 +286,10 @@ function renderAssetsTable() {
     // Ticker: locked (plain text, no border) once a symbol has been entered
     const tickerLocked = !!asset.symbol;
     const tickerCell = tickerLocked
-      ? `<td class="py-2 pr-2">
+      ? `<td class="py-2 pr-2 whitespace-nowrap">
            <span class="text-xs font-medium text-slate-100 px-1">${escapeHtml(asset.symbol)}</span>
          </td>`
-      : `<td class="py-2 pr-2">
+      : `<td class="py-2 pr-2 whitespace-nowrap">
            <input data-index="${index}" data-field="symbol" type="text"
                   class="w-20 md:w-24 rounded-md border border-slate-700 bg-slate-900/80 px-2 py-1 text-xs text-slate-100 focus:outline-none focus:ring-1 focus:ring-emerald-500/70 focus:border-emerald-400"
                   value="" placeholder="BTC" />
@@ -299,8 +299,8 @@ function renderAssetsTable() {
     const unitsNum = Number(asset.units) || 0;
     const unitsDisplay = unitsNum ? unitsNum.toFixed(4) : '–';
     const unitsCell = unitsLocked
-      ? `<td class="py-2 px-2 text-right text-slate-400 text-xs">${unitsDisplay}</td>`
-      : `<td class="py-2 px-2 text-right">
+      ? `<td class="py-2 px-2 text-right text-slate-400 text-xs whitespace-nowrap">${unitsDisplay}</td>`
+      : `<td class="py-2 px-2 text-right whitespace-nowrap">
            <input data-index="${index}" data-field="units" type="number" step="0.00000001"
                   class="number-input w-24 rounded-md border border-slate-700 bg-slate-900/80 px-2 py-1 text-xs text-right text-slate-100 focus:outline-none focus:ring-1 focus:ring-emerald-500/70 focus:border-emerald-400"
                   value="${escapeAttr(asset.units ?? '')}" />
@@ -308,22 +308,22 @@ function renderAssetsTable() {
 
     tr.innerHTML = `
       ${tickerCell}
-      <td class="py-2 px-2 text-right">
+      <td class="py-2 px-2 text-right whitespace-nowrap">
         <input data-index="${index}" data-field="allocation" type="number" step="0.1"
                class="number-input w-20 rounded-md border border-slate-700 bg-slate-900/80 px-2 py-1 text-xs text-right text-slate-100 focus:outline-none focus:ring-1 focus:ring-emerald-500/70 focus:border-emerald-400"
                value="${escapeAttr(asset.allocation ?? '')}" />
       </td>
       ${unitsCell}
-      <td class="py-2 px-2 text-right ${asset.price ? 'text-slate-200' : (state.lastPricesFetch ? 'text-amber-400' : 'text-slate-500')}">
+      <td class="py-2 px-2 text-right whitespace-nowrap ${asset.price ? 'text-slate-200' : (state.lastPricesFetch ? 'text-amber-400' : 'text-slate-500')}">
         ${asset.price
           ? formatUSD(asset.price)
           : (state.lastPricesFetch ? '⚠ no price' : '–')}
       </td>
-      <td class="py-2 px-2 text-right text-slate-200">
+      <td class="py-2 px-2 text-right text-slate-200 whitespace-nowrap">
         ${asset.price && asset.units ? formatUSD(asset.price * asset.units) : '–'}
       </td>
       ${currentPctCell}
-      <td class="py-2 pl-2 text-right">
+      <td class="py-2 pl-2 text-right whitespace-nowrap">
         <button data-index="${index}" data-action="remove-asset"
                 class="text-[11px] px-2 py-1 rounded-md border border-slate-700 text-slate-300 hover:border-rose-500 hover:text-rose-300 transition-colors">
           ✕
@@ -543,10 +543,10 @@ function renderStepDetailsAndTrades() {
         : '';
 
     tr.innerHTML = `
-      <td class="py-2 pr-2 text-slate-100 font-medium">${escapeHtml(t.symbol)}</td>
-      <td class="py-2 px-2 text-center">${actionBadge}</td>
-      <td class="py-2 px-2 text-right ${amountClass}">${amountText}</td>
-      <td class="py-2 pl-2 text-right">
+      <td class="py-2 pr-2 text-slate-100 font-medium whitespace-nowrap">${escapeHtml(t.symbol)}</td>
+      <td class="py-2 px-2 text-center whitespace-nowrap">${actionBadge}</td>
+      <td class="py-2 px-2 text-right whitespace-nowrap ${amountClass}">${amountText}</td>
+      <td class="py-2 pl-2 text-right whitespace-nowrap">
         <input data-asset-index="${t.assetIndex}" type="number" step="0.00000001"
                class="number-input w-24 rounded-md border border-slate-700 bg-slate-900/80 px-2 py-1 text-xs text-right text-slate-100 focus:outline-none focus:ring-1 focus:ring-emerald-500/70 focus:border-emerald-400"
                value="${escapeAttr(suggestedUnitsVal)}"
@@ -752,13 +752,13 @@ function renderHistory(rows) {
       row.pnl > 0 ? 'text-emerald-300' : row.pnl < 0 ? 'text-rose-300' : 'text-slate-200';
 
     tr.innerHTML = `
-      <td class="py-2 px-2 text-slate-200">${date ? date.toLocaleString() : '–'}</td>
-      <td class="py-2 px-2 text-right text-slate-200">${row.period_index}</td>
-      <td class="py-2 px-2 text-right text-slate-200">${formatUSD(row.invested)}</td>
-      <td class="py-2 px-2 text-right text-slate-200">${formatUSD(row.portfolio_value)}</td>
-      <td class="py-2 px-2 text-right ${pnlClass}">${formatUSD(row.pnl)}</td>
-      <td class="py-2 px-2 text-right ${pnlClass}">${formatPercent(row.pnl_percent)}</td>
-      <td class="py-2 pl-2 text-right">
+      <td class="py-2 px-2 text-slate-200 whitespace-nowrap">${date ? date.toLocaleString() : '–'}</td>
+      <td class="py-2 px-2 text-right text-slate-200 whitespace-nowrap">${row.period_index}</td>
+      <td class="py-2 px-2 text-right text-slate-200 whitespace-nowrap">${formatUSD(row.invested)}</td>
+      <td class="py-2 px-2 text-right text-slate-200 whitespace-nowrap">${formatUSD(row.portfolio_value)}</td>
+      <td class="py-2 px-2 text-right whitespace-nowrap ${pnlClass}">${formatUSD(row.pnl)}</td>
+      <td class="py-2 px-2 text-right whitespace-nowrap ${pnlClass}">${formatPercent(row.pnl_percent)}</td>
+      <td class="py-2 pl-2 text-right whitespace-nowrap">
         <button data-id="${row.id}" class="history-delete-btn text-[11px] text-slate-500 hover:text-rose-400 transition-colors px-1.5 py-0.5 rounded hover:bg-rose-500/10 border border-transparent hover:border-rose-500/30" title="Delete this record">✕</button>
       </td>
     `;
