@@ -752,7 +752,7 @@ function renderHistory(rows) {
       row.pnl > 0 ? 'text-emerald-300' : row.pnl < 0 ? 'text-rose-300' : 'text-slate-200';
 
     tr.innerHTML = `
-      <td class="py-2 px-2 text-slate-200 whitespace-nowrap">${date ? date.toLocaleString() : '–'}</td>
+      <td class="py-2 px-2 text-slate-200 whitespace-nowrap">${date ? date.toLocaleString(undefined, { dateStyle: 'short', timeStyle: 'short' }) : '–'}</td>
       <td class="py-2 px-2 text-right text-slate-200 whitespace-nowrap">${row.period_index}</td>
       <td class="py-2 px-2 text-right text-slate-200 whitespace-nowrap">${formatUSD(row.invested)}</td>
       <td class="py-2 px-2 text-right text-slate-200 whitespace-nowrap">${formatUSD(row.portfolio_value)}</td>
