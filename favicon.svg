@@ -1,0 +1,23 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 32 32" fill="none">
+  <!-- Dark background matching app's slate-950 theme -->
+  <rect width="32" height="32" rx="6" fill="#0f172a"/>
+
+  <!-- Gradient fill under chart line -->
+  <defs>
+    <linearGradient id="areaGrad" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0%" stop-color="#10b981" stop-opacity="0.35"/>
+      <stop offset="100%" stop-color="#10b981" stop-opacity="0"/>
+    </linearGradient>
+  </defs>
+  <path d="M5 23 L10 17 L16 19.5 L21 11 L27 6 L27 26 L5 26 Z"
+        fill="url(#areaGrad)"/>
+
+  <!-- Upward trending chart line -->
+  <polyline points="5,23 10,17 16,19.5 21,11 27,6"
+            stroke="#10b981" stroke-width="2.5"
+            stroke-linecap="round" stroke-linejoin="round"
+            fill="none"/>
+
+  <!-- Dot at latest/highest point -->
+  <circle cx="27" cy="6" r="2.5" fill="#10b981"/>
+</svg>
