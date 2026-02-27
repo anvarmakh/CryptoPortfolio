@@ -340,7 +340,7 @@ function renderAssetsTable() {
   const totalAllocation = state.assets.reduce((sum, a) => sum + (Number(a.allocation) || 0), 0);
   els.allocationTotal.textContent = `${totalAllocation.toFixed(1)}%`;
   els.allocationTotal.className =
-    'font-semibold ' +
+    'text-xs font-semibold ' +
     (Math.abs(totalAllocation - 100) < 0.01 ? 'text-emerald-300' : 'text-amber-300');
 }
 
