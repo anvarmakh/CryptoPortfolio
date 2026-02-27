@@ -181,17 +181,10 @@ function getElements() {
     // Header
     lastUpdated: document.getElementById('lastUpdated'),
 
-    // Hero
+    // Stat cards
     heroPeriod: document.getElementById('heroPeriod'),
     heroDirectionBadge: document.getElementById('heroDirectionBadge'),
     heroAmount: document.getElementById('heroAmount'),
-    heroCurrentValue: document.getElementById('heroCurrentValue'),
-    heroTargetValue: document.getElementById('heroTargetValue'),
-    heroGap: document.getElementById('heroGap'),
-    heroCappedNote: document.getElementById('heroCappedNote'),
-    heroCap: document.getElementById('heroCap'),
-
-    // Stats row
     statPortfolioValue: document.getElementById('statPortfolioValue'),
     statInvested: document.getElementById('statInvested'),
     statPnL: document.getElementById('statPnL'),
@@ -216,6 +209,8 @@ function getElements() {
     stepTargetValue: document.getElementById('stepTargetValue'),
     stepEstimatedInvested: document.getElementById('stepEstimatedInvested'),
     stepEstimatedBreakdown: document.getElementById('stepEstimatedBreakdown'),
+    stepTotalLabel: document.getElementById('stepTotalLabel'),
+    stepTotalSuggested: document.getElementById('stepTotalSuggested'),
 
     // Step error
     stepError: document.getElementById('stepError'),
@@ -288,30 +283,37 @@ function renderAssetsTable() {
       </td>`;
     }
 
-    // Units input: editable only before any history is recorded
-    const unitsInputClass =
-      'number-input w-24 rounded-md border px-2 py-1 text-xs text-right focus:outline-none ' +
-      (unitsLocked
-        ? 'border-slate-800 bg-slate-900/40 text-slate-500 cursor-not-allowed'
-        : 'border-slate-700 bg-slate-900/80 text-slate-100 focus:ring-1 focus:ring-emerald-500/70 focus:border-emerald-400');
+    // Ticker: locked (plain text, no border) once a symbol has been entered
+    const tickerLocked = !!asset.symbol;
+    const tickerCell = tickerLocked
+      ? `<td class="py-2 pr-2">
+           <span class="text-xs font-medium text-slate-100 px-1">${escapeHtml(asset.symbol)}</span>
+         </td>`
+      : `<td class="py-2 pr-2">
+           <input data-index="${index}" data-field="symbol" type="text"
+                  class="w-20 md:w-24 rounded-md border border-slate-700 bg-slate-900/80 px-2 py-1 text-xs text-slate-100 focus:outline-none focus:ring-1 focus:ring-emerald-500/70 focus:border-emerald-400"
+                  value="" placeholder="BTC" />
+         </td>`;
+
+    // Units: editable only before history; afterwards shown as plain 4dp text
+    const unitsNum = Number(asset.units) || 0;
+    const unitsDisplay = unitsNum ? unitsNum.toFixed(4) : '–';
+    const unitsCell = unitsLocked
+      ? `<td class="py-2 px-2 text-right text-slate-400 text-xs">${unitsDisplay}</td>`
+      : `<td class="py-2 px-2 text-right">
+           <input data-index="${index}" data-field="units" type="number" step="0.00000001"
+                  class="number-input w-24 rounded-md border border-slate-700 bg-slate-900/80 px-2 py-1 text-xs text-right text-slate-100 focus:outline-none focus:ring-1 focus:ring-emerald-500/70 focus:border-emerald-400"
+                  value="${escapeAttr(asset.units ?? '')}" />
+         </td>`;
 
     tr.innerHTML = `
-      <td class="py-2 pr-2">
-        <input data-index="${index}" data-field="symbol" type="text"
-               class="w-20 md:w-24 rounded-md border border-slate-700 bg-slate-900/80 px-2 py-1 text-xs text-slate-100 focus:outline-none focus:ring-1 focus:ring-emerald-500/70 focus:border-emerald-400"
-               value="${escapeAttr(asset.symbol)}" />
-      </td>
+      ${tickerCell}
       <td class="py-2 px-2 text-right">
         <input data-index="${index}" data-field="allocation" type="number" step="0.1"
                class="number-input w-20 rounded-md border border-slate-700 bg-slate-900/80 px-2 py-1 text-xs text-right text-slate-100 focus:outline-none focus:ring-1 focus:ring-emerald-500/70 focus:border-emerald-400"
                value="${escapeAttr(asset.allocation ?? '')}" />
       </td>
-      <td class="py-2 px-2 text-right">
-        <input data-index="${index}" data-field="units" type="number" step="0.00000001"
-               class="${unitsInputClass}"
-               value="${escapeAttr(asset.units ?? '')}"
-               ${unitsLocked ? 'readonly title="Units are locked once history has been recorded. Use Suggested Trades to update holdings."' : ''} />
-      </td>
+      ${unitsCell}
       <td class="py-2 px-2 text-right ${asset.price ? 'text-slate-200' : (state.lastPricesFetch ? 'text-amber-400' : 'text-slate-500')}">
         ${asset.price
           ? formatUSD(asset.price)
@@ -360,12 +362,34 @@ function computePnL() {
 
 function renderSummaryAndNextStep() {
   const { currentValue, invested, pnl, pnlPct } = computePnL();
-  const { config } = state;
 
-  // ── Stats row ──────────────────────────────────────────────────
+  // ── Card 1: Recommended action ─────────────────────────────────
+  const { cappedChange, direction, nextPeriodIndex } = computeStepDetails();
+
+  els.heroPeriod.textContent = String(nextPeriodIndex);
+
+  if (direction === 'Invest') {
+    els.heroDirectionBadge.textContent = '↑ Invest';
+    els.heroDirectionBadge.className = 'text-xs sm:text-sm font-bold text-emerald-300';
+    els.heroAmount.textContent = formatUSD(cappedChange);
+    els.heroAmount.className = 'text-sm sm:text-xl font-bold tracking-tight text-emerald-300 mt-0.5';
+  } else if (direction === 'Withdraw') {
+    els.heroDirectionBadge.textContent = '↓ Withdraw';
+    els.heroDirectionBadge.className = 'text-xs sm:text-sm font-bold text-rose-300';
+    els.heroAmount.textContent = formatUSD(Math.abs(cappedChange));
+    els.heroAmount.className = 'text-sm sm:text-xl font-bold tracking-tight text-rose-300 mt-0.5';
+  } else {
+    els.heroDirectionBadge.textContent = '— Hold';
+    els.heroDirectionBadge.className = 'text-xs sm:text-sm font-bold text-slate-400';
+    els.heroAmount.textContent = 'On target';
+    els.heroAmount.className = 'text-sm sm:text-xl font-semibold tracking-tight text-slate-400 mt-0.5';
+  }
+
+  // ── Card 2: Portfolio + Invested ───────────────────────────────
   els.statPortfolioValue.textContent = formatUSD(currentValue);
   els.statInvested.textContent = formatUSD(invested);
 
+  // ── Card 3: P&L ────────────────────────────────────────────────
   els.statPnL.textContent = (pnl >= 0 ? '+' : '') + formatUSD(pnl);
   els.statPnL.className =
     'text-sm sm:text-xl font-bold ' +
@@ -373,57 +397,8 @@ function renderSummaryAndNextStep() {
 
   els.statPnLPct.textContent = (pnl >= 0 ? '+' : '') + formatPercent(pnlPct);
   els.statPnLPct.className =
-    'text-xs font-semibold mt-0.5 ' +
+    'text-[10px] sm:text-xs font-semibold mt-0.5 ' +
     (pnl > 0 ? 'text-emerald-300' : pnl < 0 ? 'text-rose-300' : 'text-slate-400');
-
-  // ── Hero section ───────────────────────────────────────────────
-  const { targetValue, theoreticalChange, cappedChange, direction, nextPeriodIndex } =
-    computeStepDetails();
-
-  els.heroPeriod.textContent = String(nextPeriodIndex);
-  els.heroCurrentValue.textContent = formatUSD(currentValue);
-  els.heroTargetValue.textContent = formatUSD(targetValue);
-
-  els.heroGap.textContent = formatUSD(Math.abs(theoreticalChange));
-  els.heroGap.className =
-    'ml-1 font-medium ' +
-    (theoreticalChange > 0.5
-      ? 'text-emerald-300'
-      : theoreticalChange < -0.5
-      ? 'text-rose-300'
-      : 'text-slate-300');
-
-  const isCapped =
-    config.maxAddition > 0 && Math.abs(theoreticalChange) > config.maxAddition + 0.5;
-  els.heroCappedNote.textContent = isCapped
-    ? `(capped from ${formatUSD(Math.abs(theoreticalChange))})`
-    : '';
-
-  els.heroCap.textContent =
-    config.maxAddition > 0 ? `±${formatUSD(config.maxAddition)} per step` : 'no cap';
-
-  if (direction === 'Invest') {
-    els.heroDirectionBadge.textContent = '↑ Invest';
-    els.heroDirectionBadge.className =
-      'shrink-0 px-3 py-1.5 rounded-xl text-sm font-bold uppercase border ' +
-      'text-emerald-300 bg-emerald-500/10 border-emerald-500/30';
-    els.heroAmount.textContent = formatUSD(cappedChange);
-    els.heroAmount.className = 'text-3xl sm:text-4xl font-bold tracking-tight text-emerald-300';
-  } else if (direction === 'Withdraw') {
-    els.heroDirectionBadge.textContent = '↓ Withdraw';
-    els.heroDirectionBadge.className =
-      'shrink-0 px-3 py-1.5 rounded-xl text-sm font-bold uppercase border ' +
-      'text-rose-300 bg-rose-500/10 border-rose-500/30';
-    els.heroAmount.textContent = formatUSD(Math.abs(cappedChange));
-    els.heroAmount.className = 'text-3xl sm:text-4xl font-bold tracking-tight text-rose-300';
-  } else {
-    els.heroDirectionBadge.textContent = '— Hold';
-    els.heroDirectionBadge.className =
-      'shrink-0 px-3 py-1.5 rounded-xl text-sm font-bold uppercase border ' +
-      'text-slate-400 bg-slate-800/60 border-slate-700';
-    els.heroAmount.textContent = 'On target';
-    els.heroAmount.className = 'text-xl sm:text-2xl font-semibold tracking-tight text-slate-400 self-center';
-  }
 
   // ── Header timestamp ───────────────────────────────────────────
   if (state.lastPricesFetch) {
@@ -517,6 +492,17 @@ function renderStepDetailsAndTrades() {
     const sign = step >= 0 ? '+' : '−';
     els.stepEstimatedBreakdown.textContent =
       `${formatUSD(current)} ${sign} ${formatUSD(Math.abs(step))}`;
+  }
+
+  if (els.stepTotalLabel && els.stepTotalSuggested) {
+    if (details.direction === 'Withdraw') {
+      els.stepTotalLabel.textContent = 'Total to withdraw';
+      els.stepTotalSuggested.className = 'text-rose-300 font-medium';
+    } else {
+      els.stepTotalLabel.textContent = 'Total to invest';
+      els.stepTotalSuggested.className = 'text-emerald-300 font-medium';
+    }
+    els.stepTotalSuggested.textContent = formatUSD(Math.abs(details.cappedChange));
   }
 
   if (!hasAction) return;

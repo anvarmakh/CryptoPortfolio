@@ -59,77 +59,41 @@
       </div>
     </header>
 
-    <!-- ─── HERO: RECOMMENDED ACTION ───────────────────────────── -->
-    <section class="rounded-2xl border border-slate-800 bg-slate-900 p-5 sm:p-6 md:p-7">
-      <div class="space-y-3">
-        <div class="text-[11px] font-medium text-slate-500 uppercase tracking-widest">
-          Period <span id="heroPeriod">—</span> · Recommended action
-        </div>
-
-        <!-- Direction badge + amount -->
-        <div class="flex items-center gap-4 flex-wrap">
-          <div id="heroDirectionBadge"
-               class="shrink-0 px-3 py-1.5 rounded-xl text-sm font-bold uppercase border
-                      text-slate-400 bg-slate-800 border-slate-700">
-            —
-          </div>
-          <div id="heroAmount" class="text-3xl sm:text-4xl font-bold tracking-tight text-slate-400">
-            —
-          </div>
-        </div>
-
-        <!-- Formula context line -->
-        <div class="space-y-1 text-xs leading-relaxed">
-          <div class="text-slate-400">
-            <span class="text-slate-500">Now</span>
-            <span id="heroCurrentValue" class="text-slate-200 ml-1 font-medium">$0</span>
-            <span class="text-slate-700 mx-1.5">→</span>
-            <span class="text-slate-500">Target</span>
-            <span id="heroTargetValue" class="text-slate-200 ml-1 font-medium">$0</span>
-            <!-- Gap drops to a new line on mobile so the formula doesn't overflow -->
-            <br class="sm:hidden">
-            <span class="text-slate-700 mr-1.5 hidden sm:inline">·</span>
-            <span class="text-slate-500">Gap</span>
-            <span id="heroGap" class="ml-1 font-medium text-slate-300">$0</span>
-            <span id="heroCappedNote" class="text-slate-600 ml-1 text-[11px]"></span>
-          </div>
-          <div class="text-slate-500">
-            Max per step: <span id="heroCap" class="text-slate-400">no cap</span>
-          </div>
-        </div>
-      </div>
-
-      <!-- Error / warning -->
-      <div id="stepError"
-           class="hidden mt-5 text-xs text-amber-300 bg-amber-500/10 border border-amber-500/30
-                  rounded-xl px-4 py-2.5 leading-relaxed">
-      </div>
-    </section>
-
-    <!-- ─── PORTFOLIO STATS ────────────────────────────────────── -->
+    <!-- ─── STATS: 3 CARDS ────────────────────────────────────── -->
     <section class="grid grid-cols-3 gap-2 sm:gap-3">
+
+      <!-- Card 1: Recommended action -->
       <div class="rounded-xl border border-slate-800 bg-slate-900/60 px-3 py-3 sm:px-4 sm:py-3.5">
         <div class="text-[9px] sm:text-[10px] text-slate-500 uppercase tracking-wider mb-1.5">
-          <span class="hidden sm:inline">Portfolio value</span>
-          <span class="sm:hidden">Portfolio</span>
+          Period <span id="heroPeriod">—</span>
         </div>
+        <div id="heroDirectionBadge" class="text-xs sm:text-sm font-bold text-slate-400">—</div>
+        <div id="heroAmount" class="text-sm sm:text-xl font-bold tracking-tight text-slate-400 mt-0.5">—</div>
+      </div>
+
+      <!-- Card 2: Portfolio + Invested -->
+      <div class="rounded-xl border border-slate-800 bg-slate-900/60 px-3 py-3 sm:px-4 sm:py-3.5">
+        <div class="text-[9px] sm:text-[10px] text-slate-500 uppercase tracking-wider mb-1.5">Portfolio</div>
         <div id="statPortfolioValue" class="text-sm sm:text-xl font-bold">$0</div>
-        <div class="hidden sm:block text-[10px] text-slate-600 mt-0.5">At current prices</div>
-      </div>
-      <div class="rounded-xl border border-slate-800 bg-slate-900/60 px-3 py-3 sm:px-4 sm:py-3.5">
-        <div class="text-[9px] sm:text-[10px] text-slate-500 uppercase tracking-wider mb-1.5">
-          <span class="hidden sm:inline">Total invested</span>
-          <span class="sm:hidden">Invested</span>
+        <div class="text-[9px] sm:text-[10px] text-slate-500 mt-1">
+          Invested: <span id="statInvested" class="text-slate-400 font-medium">$0</span>
         </div>
-        <div id="statInvested" class="text-sm sm:text-xl font-bold">$0</div>
-        <div class="hidden sm:block text-[10px] text-slate-600 mt-0.5">Cash committed to date</div>
       </div>
+
+      <!-- Card 3: P&L -->
       <div class="rounded-xl border border-slate-800 bg-slate-900/60 px-3 py-3 sm:px-4 sm:py-3.5">
         <div class="text-[9px] sm:text-[10px] text-slate-500 uppercase tracking-wider mb-1.5">P&amp;L</div>
         <div id="statPnL" class="text-sm sm:text-xl font-bold text-slate-200">$0</div>
         <div id="statPnLPct" class="text-[10px] sm:text-xs font-semibold text-slate-400 mt-0.5">0.00%</div>
       </div>
+
     </section>
+
+    <!-- Step error / warning (shown when config is missing or allocation off) -->
+    <div id="stepError"
+         class="hidden text-xs text-amber-300 bg-amber-500/10 border border-amber-500/30
+                rounded-xl px-4 py-2.5 leading-relaxed">
+    </div>
 
     <!-- ─── HOLDINGS + TRADES ─────────────────────────────────── -->
     <section class="grid grid-cols-1 lg:grid-cols-5 gap-5">
@@ -144,7 +108,7 @@
             <button id="refreshPricesBtn"
                     class="text-[11px] px-2 py-1 rounded-lg border border-slate-700 text-slate-400
                            hover:text-emerald-300 hover:border-emerald-800 transition-colors">
-              ↻ Refresh prices
+              ↻ Refresh
             </button>
           </div>
         </div>
@@ -215,6 +179,10 @@
 
           <!-- Step summary -->
           <div class="border-t border-slate-800 pt-3 space-y-1.5 text-[11px]">
+            <div class="flex justify-between font-medium">
+              <span id="stepTotalLabel" class="text-slate-400">Total to invest</span>
+              <span id="stepTotalSuggested" class="text-emerald-300">$0</span>
+            </div>
             <div class="flex justify-between text-slate-400">
               <span>Current portfolio</span>
               <span id="stepCurrentValue" class="text-slate-200 font-medium">$0</span>
