@@ -299,8 +299,8 @@ function renderAssetsTable() {
     const unitsNum = Number(asset.units) || 0;
     const unitsDisplay = unitsNum ? unitsNum.toFixed(4) : '–';
     const unitsCell = unitsLocked
-      ? `<td class="py-2 px-2 text-right text-slate-400 text-xs whitespace-nowrap">${unitsDisplay}</td>`
-      : `<td class="py-2 px-2 text-right whitespace-nowrap">
+      ? `<td class="py-2 px-2 text-right text-slate-400 text-xs whitespace-nowrap hidden sm:table-cell">${unitsDisplay}</td>`
+      : `<td class="py-2 px-2 text-right whitespace-nowrap hidden sm:table-cell">
            <input data-index="${index}" data-field="units" type="number" step="0.00000001"
                   class="number-input w-24 rounded-md border border-slate-700 bg-slate-900/80 px-2 py-1 text-xs text-right text-slate-100 focus:outline-none focus:ring-1 focus:ring-emerald-500/70 focus:border-emerald-400"
                   value="${escapeAttr(asset.units ?? '')}" />
