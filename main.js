@@ -34,10 +34,16 @@ let state = loadState();
 // Whether at least one history snapshot exists — controls units-column lock.
 let _hasHistory = false;
 
-// Latest history rows, used by chart/analytics/export.
+// Latest history rows (step snapshots), used by chart/analytics/export.
 let _historyRows = [];
 
-// Chart.js instance — destroyed and recreated when data shape changes.
+// Periodic price snapshots for the continuous performance chart.
+let _priceSnapshots = [];
+
+// Chart resolution filter: '12h' | '24h' | 'all'
+let _chartResolution = '12h';
+
+// Chart.js instance (reused; data updated in-place).
 let _chartInstance = null;
 
 // ── Ticker → CoinGecko ID mapping ────────────────────────────────────────────
@@ -693,6 +699,7 @@ async function fetchPrices() {
     renderAssetsTable();
     renderSummaryAndNextStep();
     renderStepDetailsAndTrades();
+    maybeRecordPriceSnapshot();
   } catch (err) {
     console.error(err);
     els.stepError.textContent =
@@ -748,7 +755,7 @@ function renderHistory(rows) {
       '<td colspan="7" class="py-3 px-2 text-center text-xs text-slate-500">No snapshots yet. Track current state to create the first one.</td>';
     els.historyTableBody.appendChild(tr);
     renderAnalytics([]);
-    renderChart([]);
+    renderChart();
     return;
   }
 
@@ -782,7 +789,7 @@ function renderHistory(rows) {
   }
 
   renderAnalytics(rows);
-  renderChart(rows);
+  renderChart();
 }
 
 async function createSnapshotFromStep(details) {
@@ -954,83 +961,192 @@ function renderAnalytics(rows) {
   }
 }
 
-function renderChart(rows) {
+// Return price snapshots sampled at most once per `intervalHours`.
+// Input must already be sorted ASC by created_at.
+function sampleByInterval(snapshots, intervalHours) {
+  if (!snapshots.length) return [];
+  const ms = intervalHours * 3_600_000;
+  const out = [];
+  let lastT = -Infinity;
+  for (const s of snapshots) {
+    const t = new Date(s.created_at).getTime();
+    if (t - lastT >= ms) { out.push(s); lastT = t; }
+  }
+  return out;
+}
+
+async function fetchPriceSnapshots() {
+  try {
+    const res = await fetch('/api/price-snapshots');
+    if (!res.ok) throw new Error(`status ${res.status}`);
+    _priceSnapshots = await res.json(); // already ASC from server
+    renderChart();
+  } catch (err) {
+    console.error('Failed to fetch price snapshots', err);
+  }
+}
+
+// Record a price snapshot at most once per 12 hours after a successful price fetch.
+async function maybeRecordPriceSnapshot() {
+  const portfolioValue = computePortfolioValue();
+  if (portfolioValue <= 0) return;
+
+  const MIN_INTERVAL_MS = 12 * 3_600_000;
+  if (_priceSnapshots.length) {
+    const lastT = new Date(_priceSnapshots[_priceSnapshots.length - 1].created_at).getTime();
+    if (Date.now() - lastT < MIN_INTERVAL_MS) return;
+  }
+
+  try {
+    const res = await fetch('/api/price-snapshots', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        createdAt: new Date().toISOString(),
+        portfolioValue,
+        invested: state.config.investedSoFar || 0,
+      }),
+    });
+    if (!res.ok) throw new Error(`status ${res.status}`);
+    const row = await res.json();
+    _priceSnapshots.push(row);
+    renderChart();
+  } catch (err) {
+    console.error('Failed to record price snapshot', err);
+  }
+}
+
+function fmtTickLabel(ms) {
+  const d = new Date(ms);
+  return (
+    d.toLocaleDateString(undefined, { month: 'short', day: 'numeric' }) +
+    ' ' +
+    d.toLocaleTimeString(undefined, { hour: '2-digit', minute: '2-digit', hour12: false })
+  );
+}
+
+// Chart uses _priceSnapshots for the continuous lines and _historyRows for step markers.
+// Falls back to _historyRows as line source when price snapshots are not yet available.
+function renderChart() {
   const chartWrap = document.getElementById('historyChartWrap');
   const canvas = document.getElementById('historyChart');
   if (!chartWrap || !canvas) return;
 
-  const sorted = [...(rows || [])].sort(
-    (a, b) => new Date(a.created_at) - new Date(b.created_at)
-  );
+  // --- resolve line data source ---
+  let lineSnaps = _priceSnapshots; // already sorted ASC
+  if (lineSnaps.length >= 2 && _chartResolution !== 'all') {
+    lineSnaps = sampleByInterval(lineSnaps, _chartResolution === '24h' ? 24 : 12);
+  }
 
-  if (sorted.length < 2) {
+  // Fallback: use step history rows when no price snapshots yet
+  const fallback = lineSnaps.length < 2
+    ? [..._historyRows].sort((a, b) => new Date(a.created_at) - new Date(b.created_at))
+    : null;
+  const useSource = lineSnaps.length >= 2 ? lineSnaps : (fallback || []);
+
+  if (useSource.length < 2) {
     chartWrap.classList.add('hidden');
     if (_chartInstance) { _chartInstance.destroy(); _chartInstance = null; }
     return;
   }
-
   chartWrap.classList.remove('hidden');
 
-  const labels = sorted.map((r) => {
-    const d = new Date(r.created_at);
-    return d.toLocaleDateString(undefined, { month: 'short', day: 'numeric' });
-  });
-  const portfolioValues = sorted.map((r) => r.portfolio_value);
-  const investedValues = sorted.map((r) => r.invested);
+  // Portfolio and invested lines (x = timestamp ms)
+  const portfolioData = useSource.map((s) => ({
+    x: new Date(s.created_at).getTime(),
+    y: s.portfolio_value,
+  }));
+  const investedData = useSource.map((s) => ({
+    x: new Date(s.created_at).getTime(),
+    y: s.invested,
+  }));
 
+  // Step markers: non-initial snapshots from history
+  const stepData = _historyRows
+    .filter((r) => {
+      try {
+        const m = r.meta ? (typeof r.meta === 'string' ? JSON.parse(r.meta) : r.meta) : null;
+        return !m || m.type !== 'initial';
+      } catch (_) { return true; }
+    })
+    .map((r) => ({ x: new Date(r.created_at).getTime(), y: r.portfolio_value }));
+
+  // Update existing chart in-place
   if (_chartInstance) {
-    _chartInstance.data.labels = labels;
-    _chartInstance.data.datasets[0].data = portfolioValues;
-    _chartInstance.data.datasets[1].data = investedValues;
+    _chartInstance.data.datasets[0].data = portfolioData;
+    _chartInstance.data.datasets[1].data = investedData;
+    _chartInstance.data.datasets[2].data = stepData;
     _chartInstance.update();
     return;
   }
 
+  // Create chart
   _chartInstance = new Chart(canvas.getContext('2d'), {
     type: 'line',
     data: {
-      labels,
       datasets: [
         {
           label: 'Portfolio',
-          data: portfolioValues,
+          data: portfolioData,
           borderColor: '#34d399',
           backgroundColor: 'rgba(52,211,153,0.07)',
           fill: true,
           tension: 0.3,
-          pointRadius: 3,
-          pointHoverRadius: 5,
+          pointRadius: 2,
+          pointHoverRadius: 4,
+          order: 2,
         },
         {
           label: 'Invested',
-          data: investedValues,
+          data: investedData,
           borderColor: '#38bdf8',
           backgroundColor: 'transparent',
           fill: false,
           tension: 0.3,
           borderDash: [5, 4],
-          pointRadius: 3,
-          pointHoverRadius: 5,
+          pointRadius: 2,
+          pointHoverRadius: 4,
+          order: 3,
+        },
+        {
+          label: 'Step applied',
+          type: 'scatter',
+          data: stepData,
+          backgroundColor: '#f59e0b',
+          borderColor: '#92400e',
+          borderWidth: 1,
+          pointStyle: 'triangle',
+          pointRadius: 7,
+          pointHoverRadius: 9,
+          order: 1,
         },
       ],
     },
     options: {
       responsive: true,
       maintainAspectRatio: false,
-      interaction: { mode: 'index', intersect: false },
+      interaction: { mode: 'nearest', intersect: false, axis: 'x' },
       plugins: {
-        legend: {
-          labels: { color: '#94a3b8', font: { size: 11 }, boxWidth: 12 },
-        },
+        legend: { display: false }, // legend replaced by inline HTML legend below chart
         tooltip: {
           callbacks: {
-            label: (ctx) => `${ctx.dataset.label}: ${formatUSD(ctx.raw)}`,
+            title: (items) => (items.length ? fmtTickLabel(items[0].parsed.x) : ''),
+            label: (ctx) => {
+              const label = ctx.dataset.label === 'Step applied' ? 'Step' : ctx.dataset.label;
+              return `${label}: ${formatUSD(ctx.parsed.y)}`;
+            },
           },
         },
       },
       scales: {
         x: {
-          ticks: { color: '#64748b', font: { size: 10 }, maxTicksLimit: 8 },
+          type: 'linear',
+          ticks: {
+            color: '#64748b',
+            font: { size: 10 },
+            maxTicksLimit: 6,
+            callback: fmtTickLabel,
+          },
           grid: { color: '#1e293b' },
         },
         y: {
@@ -1038,7 +1154,7 @@ function renderChart(rows) {
             color: '#64748b',
             font: { size: 10 },
             callback: (v) =>
-              '$' + (Math.abs(v) >= 1000 ? (v / 1000).toFixed(1) + 'k' : v.toFixed(0)),
+              '$' + (Math.abs(v) >= 1000 ? (v / 1000).toFixed(1) + 'k' : String(v.toFixed(0))),
           },
           grid: { color: '#1e293b' },
         },
@@ -1196,6 +1312,8 @@ function attachEventListeners() {
     if (!window.confirm('Reset all configuration and data? This cannot be undone.')) return;
     state = structuredClone(defaultState);
     _hasHistory = false;
+    _historyRows = [];
+    _priceSnapshots = [];
     saveState();
     syncConfigInputsFromState();
     renderAssetsTable();
@@ -1236,17 +1354,40 @@ function attachEventListeners() {
   const clearHistoryBtn = document.getElementById('clearHistoryBtn');
   if (clearHistoryBtn) {
     clearHistoryBtn.addEventListener('click', async () => {
-      if (!window.confirm('Clear all history snapshots? This cannot be undone.')) return;
+      if (!window.confirm('Clear all history and price snapshots? This cannot be undone.')) return;
       try {
         await fetch('/api/history', { method: 'DELETE' });
         _historyRows = [];
+        _priceSnapshots = [];
         fetchHistory();
+        renderChart();
         showToast('History cleared.');
       } catch (err) {
         console.error('Failed to clear history', err);
       }
     });
   }
+
+  // Resolution toggle buttons
+  function applyResolutionBtn(active) {
+    document.querySelectorAll('.chart-res-btn').forEach((b) => {
+      const isActive = b.dataset.res === active;
+      b.className =
+        'chart-res-btn text-[10px] px-2 py-0.5 rounded border transition-colors ' +
+        (isActive
+          ? 'border-slate-500 text-slate-200 bg-slate-800'
+          : 'border-slate-700 text-slate-500 hover:text-slate-300');
+    });
+  }
+  applyResolutionBtn(_chartResolution);
+  document.querySelectorAll('.chart-res-btn').forEach((btn) => {
+    btn.addEventListener('click', () => {
+      _chartResolution = btn.dataset.res;
+      applyResolutionBtn(_chartResolution);
+      if (_chartInstance) { _chartInstance.destroy(); _chartInstance = null; }
+      renderChart();
+    });
+  });
 
   if (els.historyTableBody) {
     els.historyTableBody.addEventListener('click', async (e) => {
@@ -1322,6 +1463,7 @@ async function init() {
 
   fetchPrices();
   fetchHistory();
+  fetchPriceSnapshots();
 
   const isFirstRun = !state.config.initialValue && !state.config.stepPerPeriod;
   if (isFirstRun) {

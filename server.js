@@ -42,6 +42,13 @@ db.exec(`
     state_json TEXT NOT NULL,
     updated_at TEXT NOT NULL
   );
+
+  CREATE TABLE IF NOT EXISTS price_snapshots (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    created_at TEXT NOT NULL,
+    portfolio_value REAL NOT NULL,
+    invested REAL NOT NULL
+  );
 `);
 
 app.use(cors());
@@ -178,14 +185,51 @@ app.post('/api/history', (req, res) => {
   }
 });
 
-// Optional: clear all snapshots (for manual reset)
+// Optional: clear all snapshots (for manual reset) — also clears price_snapshots
 app.delete('/api/history', (req, res) => {
   try {
     db.prepare('DELETE FROM snapshots').run();
+    db.prepare('DELETE FROM price_snapshots').run();
     res.json({ ok: true });
   } catch (err) {
     console.error('DB error on DELETE /api/history', err.message);
     res.status(500).json({ error: 'Failed to clear history' });
+  }
+});
+
+// Price snapshots: periodic portfolio value recordings for the performance chart
+app.get('/api/price-snapshots', (req, res) => {
+  try {
+    const rows = db.prepare(
+      'SELECT id, created_at, portfolio_value, invested FROM price_snapshots ORDER BY datetime(created_at) ASC'
+    ).all();
+    res.json(rows);
+  } catch (err) {
+    console.error('DB error on GET /api/price-snapshots', err.message);
+    res.status(500).json({ error: 'Failed to retrieve price snapshots' });
+  }
+});
+
+app.post('/api/price-snapshots', (req, res) => {
+  const { createdAt, portfolioValue, invested } = req.body || {};
+  if (
+    typeof createdAt !== 'string' ||
+    typeof portfolioValue !== 'number' ||
+    typeof invested !== 'number'
+  ) {
+    return res.status(400).json({ error: 'Invalid payload' });
+  }
+  try {
+    const info = db.prepare(
+      'INSERT INTO price_snapshots (created_at, portfolio_value, invested) VALUES (?, ?, ?)'
+    ).run(createdAt, portfolioValue, invested);
+    const row = db.prepare(
+      'SELECT id, created_at, portfolio_value, invested FROM price_snapshots WHERE id = ?'
+    ).get(info.lastInsertRowid);
+    res.status(201).json(row);
+  } catch (err) {
+    console.error('DB error on POST /api/price-snapshots', err.message);
+    res.status(500).json({ error: 'Failed to save price snapshot' });
   }
 });
 
