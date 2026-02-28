@@ -34,6 +34,12 @@ let state = loadState();
 // Whether at least one history snapshot exists — controls units-column lock.
 let _hasHistory = false;
 
+// Latest history rows, used by chart/analytics/export.
+let _historyRows = [];
+
+// Chart.js instance — destroyed and recreated when data shape changes.
+let _chartInstance = null;
+
 // ── Ticker → CoinGecko ID mapping ────────────────────────────────────────────
 const TICKER_TO_COINGECKO_ID = {
   BTC: 'bitcoin',
@@ -720,7 +726,8 @@ function renderHistory(rows) {
   if (!els.historyTableBody) return;
   els.historyTableBody.innerHTML = '';
 
-  const isEmpty = !Array.isArray(rows) || !rows.length;
+  _historyRows = Array.isArray(rows) ? rows : [];
+  const isEmpty = !_historyRows.length;
   const hadHistory = _hasHistory;
   _hasHistory = !isEmpty;
 
@@ -740,6 +747,8 @@ function renderHistory(rows) {
     tr.innerHTML =
       '<td colspan="7" class="py-3 px-2 text-center text-xs text-slate-500">No snapshots yet. Track current state to create the first one.</td>';
     els.historyTableBody.appendChild(tr);
+    renderAnalytics([]);
+    renderChart([]);
     return;
   }
 
@@ -771,6 +780,9 @@ function renderHistory(rows) {
     els.historyError.classList.add('hidden');
     els.historyError.textContent = '';
   }
+
+  renderAnalytics(rows);
+  renderChart(rows);
 }
 
 async function createSnapshotFromStep(details) {
@@ -876,6 +888,196 @@ async function createInitialSnapshot() {
   } finally {
     if (els.trackCurrentStateBtn) els.trackCurrentStateBtn.disabled = false;
   }
+}
+
+function renderAnalytics(rows) {
+  const analyticsEl = document.getElementById('historyAnalytics');
+  if (!analyticsEl) return;
+
+  if (!Array.isArray(rows) || !rows.length) {
+    analyticsEl.classList.add('hidden');
+    return;
+  }
+
+  analyticsEl.classList.remove('hidden');
+
+  const sorted = [...rows].sort((a, b) => new Date(a.created_at) - new Date(b.created_at));
+
+  // Count step snapshots (exclude the initial tracking snapshot)
+  const stepRows = rows.filter((r) => {
+    try {
+      const meta = r.meta ? (typeof r.meta === 'string' ? JSON.parse(r.meta) : r.meta) : null;
+      return !meta || meta.type !== 'initial';
+    } catch (_) { return true; }
+  });
+
+  // Total return from the most recent snapshot
+  const latest = sorted[sorted.length - 1];
+  const totalReturnPct = latest.pnl_percent;
+
+  // Best and worst period-over-period portfolio value change
+  let bestChange = null;
+  let worstChange = null;
+  for (let i = 1; i < sorted.length; i++) {
+    const change = sorted[i].portfolio_value - sorted[i - 1].portfolio_value;
+    if (bestChange === null || change > bestChange) bestChange = change;
+    if (worstChange === null || change < worstChange) worstChange = change;
+  }
+
+  const periodCountEl = document.getElementById('analyticsPeriodsCount');
+  const totalReturnEl = document.getElementById('analyticsTotalReturn');
+  const bestEl = document.getElementById('analyticsBestPeriod');
+  const worstEl = document.getElementById('analyticsWorstPeriod');
+
+  if (periodCountEl) periodCountEl.textContent = stepRows.length;
+
+  if (totalReturnEl) {
+    totalReturnEl.textContent = (totalReturnPct >= 0 ? '+' : '') + formatPercent(totalReturnPct);
+    totalReturnEl.className =
+      'text-sm font-bold mt-0.5 ' +
+      (totalReturnPct > 0 ? 'text-emerald-300' : totalReturnPct < 0 ? 'text-rose-300' : 'text-slate-200');
+  }
+
+  if (bestEl) {
+    bestEl.textContent = bestChange !== null
+      ? (bestChange >= 0 ? '+' : '') + formatUSD(bestChange)
+      : '—';
+  }
+
+  if (worstEl) {
+    const worstPositive = worstChange !== null && worstChange >= 0;
+    worstEl.textContent = worstChange !== null
+      ? (worstChange >= 0 ? '+' : '') + formatUSD(worstChange)
+      : '—';
+    worstEl.className =
+      'text-sm font-bold mt-0.5 ' + (worstPositive ? 'text-emerald-300' : 'text-rose-300');
+  }
+}
+
+function renderChart(rows) {
+  const chartWrap = document.getElementById('historyChartWrap');
+  const canvas = document.getElementById('historyChart');
+  if (!chartWrap || !canvas) return;
+
+  const sorted = [...(rows || [])].sort(
+    (a, b) => new Date(a.created_at) - new Date(b.created_at)
+  );
+
+  if (sorted.length < 2) {
+    chartWrap.classList.add('hidden');
+    if (_chartInstance) { _chartInstance.destroy(); _chartInstance = null; }
+    return;
+  }
+
+  chartWrap.classList.remove('hidden');
+
+  const labels = sorted.map((r) => {
+    const d = new Date(r.created_at);
+    return d.toLocaleDateString(undefined, { month: 'short', day: 'numeric' });
+  });
+  const portfolioValues = sorted.map((r) => r.portfolio_value);
+  const investedValues = sorted.map((r) => r.invested);
+
+  if (_chartInstance) {
+    _chartInstance.data.labels = labels;
+    _chartInstance.data.datasets[0].data = portfolioValues;
+    _chartInstance.data.datasets[1].data = investedValues;
+    _chartInstance.update();
+    return;
+  }
+
+  _chartInstance = new Chart(canvas.getContext('2d'), {
+    type: 'line',
+    data: {
+      labels,
+      datasets: [
+        {
+          label: 'Portfolio',
+          data: portfolioValues,
+          borderColor: '#34d399',
+          backgroundColor: 'rgba(52,211,153,0.07)',
+          fill: true,
+          tension: 0.3,
+          pointRadius: 3,
+          pointHoverRadius: 5,
+        },
+        {
+          label: 'Invested',
+          data: investedValues,
+          borderColor: '#38bdf8',
+          backgroundColor: 'transparent',
+          fill: false,
+          tension: 0.3,
+          borderDash: [5, 4],
+          pointRadius: 3,
+          pointHoverRadius: 5,
+        },
+      ],
+    },
+    options: {
+      responsive: true,
+      maintainAspectRatio: false,
+      interaction: { mode: 'index', intersect: false },
+      plugins: {
+        legend: {
+          labels: { color: '#94a3b8', font: { size: 11 }, boxWidth: 12 },
+        },
+        tooltip: {
+          callbacks: {
+            label: (ctx) => `${ctx.dataset.label}: ${formatUSD(ctx.raw)}`,
+          },
+        },
+      },
+      scales: {
+        x: {
+          ticks: { color: '#64748b', font: { size: 10 }, maxTicksLimit: 8 },
+          grid: { color: '#1e293b' },
+        },
+        y: {
+          ticks: {
+            color: '#64748b',
+            font: { size: 10 },
+            callback: (v) =>
+              '$' + (Math.abs(v) >= 1000 ? (v / 1000).toFixed(1) + 'k' : v.toFixed(0)),
+          },
+          grid: { color: '#1e293b' },
+        },
+      },
+    },
+  });
+}
+
+function exportHistoryCsv() {
+  if (!_historyRows || !_historyRows.length) {
+    showToast('No history to export.');
+    return;
+  }
+
+  const headers = ['Date', 'Period', 'Invested (USD)', 'Portfolio Value (USD)', 'P&L (USD)', 'P&L (%)'];
+  const sorted = [..._historyRows].sort((a, b) => new Date(a.created_at) - new Date(b.created_at));
+  const csvRows = sorted.map((r) => {
+    const d = r.created_at ? new Date(r.created_at).toLocaleString() : '';
+    return [
+      `"${d}"`,
+      r.period_index,
+      r.invested.toFixed(2),
+      r.portfolio_value.toFixed(2),
+      r.pnl.toFixed(2),
+      r.pnl_percent.toFixed(4),
+    ].join(',');
+  });
+
+  const csv = [headers.join(','), ...csvRows].join('\n');
+  const blob = new Blob([csv], { type: 'text/csv' });
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement('a');
+  a.href = url;
+  a.download = `portfolio_history_${new Date().toISOString().slice(0, 10)}.csv`;
+  document.body.appendChild(a);
+  a.click();
+  document.body.removeChild(a);
+  URL.revokeObjectURL(url);
+  showToast('History exported as CSV ✓');
 }
 
 function attachEventListeners() {
@@ -1023,6 +1225,26 @@ function attachEventListeners() {
   if (els.refreshHistoryBtn) {
     els.refreshHistoryBtn.addEventListener('click', () => {
       fetchHistory();
+    });
+  }
+
+  const exportCsvBtn = document.getElementById('exportCsvBtn');
+  if (exportCsvBtn) {
+    exportCsvBtn.addEventListener('click', exportHistoryCsv);
+  }
+
+  const clearHistoryBtn = document.getElementById('clearHistoryBtn');
+  if (clearHistoryBtn) {
+    clearHistoryBtn.addEventListener('click', async () => {
+      if (!window.confirm('Clear all history snapshots? This cannot be undone.')) return;
+      try {
+        await fetch('/api/history', { method: 'DELETE' });
+        _historyRows = [];
+        fetchHistory();
+        showToast('History cleared.');
+      } catch (err) {
+        console.error('Failed to clear history', err);
+      }
     });
   }
 
