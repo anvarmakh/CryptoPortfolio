@@ -6,6 +6,7 @@
   <title>Value Averaging Planner</title>
   <link rel="icon" type="image/svg+xml" href="./favicon.svg" />
   <script src="https://cdn.tailwindcss.com"></script>
+  <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.4/dist/chart.umd.min.js"></script>
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Sans:wght@400;500;600;700&family=IBM+Plex+Mono:wght@400;500;600;700&display=swap" rel="stylesheet">
@@ -235,11 +236,23 @@
           <h2 class="text-sm font-semibold text-slate-200">History</h2>
           <p class="text-[11px] text-slate-500 mt-0.5">Snapshot saved each time you mark a step applied</p>
         </div>
-        <button id="refreshHistoryBtn"
-                class="text-xs px-3 py-1.5 rounded-lg border border-slate-700 text-slate-400
-                       hover:text-slate-200 hover:border-slate-600 transition-colors">
-          Refresh
-        </button>
+        <div class="flex items-center gap-2 shrink-0">
+          <button id="exportCsvBtn"
+                  class="text-xs px-3 py-1.5 rounded-lg border border-slate-700 text-slate-400
+                         hover:text-slate-200 hover:border-slate-600 transition-colors">
+            ↓ CSV
+          </button>
+          <button id="clearHistoryBtn"
+                  class="text-xs px-3 py-1.5 rounded-lg border border-slate-700 text-slate-400
+                         hover:text-rose-300 hover:border-rose-800 transition-colors">
+            Clear
+          </button>
+          <button id="refreshHistoryBtn"
+                  class="text-xs px-3 py-1.5 rounded-lg border border-slate-700 text-slate-400
+                         hover:text-slate-200 hover:border-slate-600 transition-colors">
+            Refresh
+          </button>
+        </div>
       </div>
       <div class="px-5 py-4">
         <div id="historyError"
@@ -264,6 +277,47 @@
             </tbody>
           </table>
         </div>
+
+        <!-- Analytics summary (shown when history has data) -->
+        <div id="historyAnalytics" class="hidden grid grid-cols-2 sm:grid-cols-4 gap-2 mt-4 pt-4 border-t border-slate-800">
+          <div class="rounded-xl bg-slate-800/50 px-3 py-2.5">
+            <div class="text-[10px] text-slate-500 uppercase tracking-wider">Periods</div>
+            <div id="analyticsPeriodsCount" class="text-sm font-bold text-slate-200 mt-0.5">—</div>
+          </div>
+          <div class="rounded-xl bg-slate-800/50 px-3 py-2.5">
+            <div class="text-[10px] text-slate-500 uppercase tracking-wider">Total return</div>
+            <div id="analyticsTotalReturn" class="text-sm font-bold text-slate-200 mt-0.5">—</div>
+          </div>
+          <div class="rounded-xl bg-slate-800/50 px-3 py-2.5">
+            <div class="text-[10px] text-slate-500 uppercase tracking-wider">Best period ↑</div>
+            <div id="analyticsBestPeriod" class="text-sm font-bold text-emerald-300 mt-0.5">—</div>
+          </div>
+          <div class="rounded-xl bg-slate-800/50 px-3 py-2.5">
+            <div class="text-[10px] text-slate-500 uppercase tracking-wider">Worst period ↓</div>
+            <div id="analyticsWorstPeriod" class="text-sm font-bold text-rose-300 mt-0.5">—</div>
+          </div>
+        </div>
+
+        <!-- Performance chart (shown when 2+ price snapshots exist) -->
+        <div id="historyChartWrap" class="hidden mt-4 pt-4 border-t border-slate-800">
+          <div class="flex items-center justify-between mb-3">
+            <div class="text-[10px] text-slate-500 uppercase tracking-wider">Portfolio vs Invested</div>
+            <div class="flex items-center gap-1">
+              <button data-res="12h" class="chart-res-btn text-[10px] px-2 py-0.5 rounded border transition-colors">12h</button>
+              <button data-res="24h" class="chart-res-btn text-[10px] px-2 py-0.5 rounded border transition-colors">24h</button>
+              <button data-res="all" class="chart-res-btn text-[10px] px-2 py-0.5 rounded border transition-colors">All</button>
+            </div>
+          </div>
+          <div style="position:relative;height:200px">
+            <canvas id="historyChart"></canvas>
+          </div>
+          <div class="mt-2 flex items-center gap-3 text-[10px] text-slate-600">
+            <span class="flex items-center gap-1"><span style="display:inline-block;width:10px;height:2px;background:#34d399"></span> Portfolio</span>
+            <span class="flex items-center gap-1"><span style="display:inline-block;width:10px;height:2px;background:#38bdf8;border-top:1px dashed #38bdf8"></span> Invested</span>
+            <span class="flex items-center gap-1"><span style="display:inline-block;width:0;height:0;border-left:5px solid transparent;border-right:5px solid transparent;border-bottom:8px solid #f59e0b"></span> Step applied</span>
+          </div>
+        </div>
+
       </div>
     </section>
 

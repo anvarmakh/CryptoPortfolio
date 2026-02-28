@@ -34,6 +34,18 @@ let state = loadState();
 // Whether at least one history snapshot exists — controls units-column lock.
 let _hasHistory = false;
 
+// Latest history rows (step snapshots), used by chart/analytics/export.
+let _historyRows = [];
+
+// Periodic price snapshots for the continuous performance chart.
+let _priceSnapshots = [];
+
+// Chart resolution filter: '12h' | '24h' | 'all'
+let _chartResolution = '12h';
+
+// Chart.js instance (reused; data updated in-place).
+let _chartInstance = null;
+
 // ── Ticker → CoinGecko ID mapping ────────────────────────────────────────────
 const TICKER_TO_COINGECKO_ID = {
   BTC: 'bitcoin',
@@ -687,6 +699,7 @@ async function fetchPrices() {
     renderAssetsTable();
     renderSummaryAndNextStep();
     renderStepDetailsAndTrades();
+    maybeRecordPriceSnapshot();
   } catch (err) {
     console.error(err);
     els.stepError.textContent =
@@ -720,7 +733,8 @@ function renderHistory(rows) {
   if (!els.historyTableBody) return;
   els.historyTableBody.innerHTML = '';
 
-  const isEmpty = !Array.isArray(rows) || !rows.length;
+  _historyRows = Array.isArray(rows) ? rows : [];
+  const isEmpty = !_historyRows.length;
   const hadHistory = _hasHistory;
   _hasHistory = !isEmpty;
 
@@ -740,6 +754,8 @@ function renderHistory(rows) {
     tr.innerHTML =
       '<td colspan="7" class="py-3 px-2 text-center text-xs text-slate-500">No snapshots yet. Track current state to create the first one.</td>';
     els.historyTableBody.appendChild(tr);
+    renderAnalytics([]);
+    renderChart();
     return;
   }
 
@@ -771,6 +787,9 @@ function renderHistory(rows) {
     els.historyError.classList.add('hidden');
     els.historyError.textContent = '';
   }
+
+  renderAnalytics(rows);
+  renderChart();
 }
 
 async function createSnapshotFromStep(details) {
@@ -876,6 +895,305 @@ async function createInitialSnapshot() {
   } finally {
     if (els.trackCurrentStateBtn) els.trackCurrentStateBtn.disabled = false;
   }
+}
+
+function renderAnalytics(rows) {
+  const analyticsEl = document.getElementById('historyAnalytics');
+  if (!analyticsEl) return;
+
+  if (!Array.isArray(rows) || !rows.length) {
+    analyticsEl.classList.add('hidden');
+    return;
+  }
+
+  analyticsEl.classList.remove('hidden');
+
+  const sorted = [...rows].sort((a, b) => new Date(a.created_at) - new Date(b.created_at));
+
+  // Count step snapshots (exclude the initial tracking snapshot)
+  const stepRows = rows.filter((r) => {
+    try {
+      const meta = r.meta ? (typeof r.meta === 'string' ? JSON.parse(r.meta) : r.meta) : null;
+      return !meta || meta.type !== 'initial';
+    } catch (_) { return true; }
+  });
+
+  // Total return from the most recent snapshot
+  const latest = sorted[sorted.length - 1];
+  const totalReturnPct = latest.pnl_percent;
+
+  // Best and worst period-over-period portfolio value change
+  let bestChange = null;
+  let worstChange = null;
+  for (let i = 1; i < sorted.length; i++) {
+    const change = sorted[i].portfolio_value - sorted[i - 1].portfolio_value;
+    if (bestChange === null || change > bestChange) bestChange = change;
+    if (worstChange === null || change < worstChange) worstChange = change;
+  }
+
+  const periodCountEl = document.getElementById('analyticsPeriodsCount');
+  const totalReturnEl = document.getElementById('analyticsTotalReturn');
+  const bestEl = document.getElementById('analyticsBestPeriod');
+  const worstEl = document.getElementById('analyticsWorstPeriod');
+
+  if (periodCountEl) periodCountEl.textContent = stepRows.length;
+
+  if (totalReturnEl) {
+    totalReturnEl.textContent = (totalReturnPct >= 0 ? '+' : '') + formatPercent(totalReturnPct);
+    totalReturnEl.className =
+      'text-sm font-bold mt-0.5 ' +
+      (totalReturnPct > 0 ? 'text-emerald-300' : totalReturnPct < 0 ? 'text-rose-300' : 'text-slate-200');
+  }
+
+  if (bestEl) {
+    bestEl.textContent = bestChange !== null
+      ? (bestChange >= 0 ? '+' : '') + formatUSD(bestChange)
+      : '—';
+  }
+
+  if (worstEl) {
+    const worstPositive = worstChange !== null && worstChange >= 0;
+    worstEl.textContent = worstChange !== null
+      ? (worstChange >= 0 ? '+' : '') + formatUSD(worstChange)
+      : '—';
+    worstEl.className =
+      'text-sm font-bold mt-0.5 ' + (worstPositive ? 'text-emerald-300' : 'text-rose-300');
+  }
+}
+
+// Return price snapshots sampled at most once per `intervalHours`.
+// Input must already be sorted ASC by created_at.
+function sampleByInterval(snapshots, intervalHours) {
+  if (!snapshots.length) return [];
+  const ms = intervalHours * 3_600_000;
+  const out = [];
+  let lastT = -Infinity;
+  for (const s of snapshots) {
+    const t = new Date(s.created_at).getTime();
+    if (t - lastT >= ms) { out.push(s); lastT = t; }
+  }
+  return out;
+}
+
+async function fetchPriceSnapshots() {
+  try {
+    const res = await fetch('/api/price-snapshots');
+    if (!res.ok) throw new Error(`status ${res.status}`);
+    _priceSnapshots = await res.json(); // already ASC from server
+    renderChart();
+  } catch (err) {
+    console.error('Failed to fetch price snapshots', err);
+  }
+}
+
+// Record a price snapshot at most once per 12 hours after a successful price fetch.
+async function maybeRecordPriceSnapshot() {
+  const portfolioValue = computePortfolioValue();
+  if (portfolioValue <= 0) return;
+
+  const MIN_INTERVAL_MS = 12 * 3_600_000;
+  if (_priceSnapshots.length) {
+    const lastT = new Date(_priceSnapshots[_priceSnapshots.length - 1].created_at).getTime();
+    if (Date.now() - lastT < MIN_INTERVAL_MS) return;
+  }
+
+  try {
+    const res = await fetch('/api/price-snapshots', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        createdAt: new Date().toISOString(),
+        portfolioValue,
+        invested: state.config.investedSoFar || 0,
+      }),
+    });
+    if (!res.ok) throw new Error(`status ${res.status}`);
+    const row = await res.json();
+    _priceSnapshots.push(row);
+    renderChart();
+  } catch (err) {
+    console.error('Failed to record price snapshot', err);
+  }
+}
+
+function fmtTickLabel(ms) {
+  const d = new Date(ms);
+  return (
+    d.toLocaleDateString(undefined, { month: 'short', day: 'numeric' }) +
+    ' ' +
+    d.toLocaleTimeString(undefined, { hour: '2-digit', minute: '2-digit', hour12: false })
+  );
+}
+
+// Chart uses _priceSnapshots for the continuous lines and _historyRows for step markers.
+// Falls back to _historyRows as line source when price snapshots are not yet available.
+function renderChart() {
+  const chartWrap = document.getElementById('historyChartWrap');
+  const canvas = document.getElementById('historyChart');
+  if (!chartWrap || !canvas) return;
+
+  // --- resolve line data source ---
+  let lineSnaps = _priceSnapshots; // already sorted ASC
+  if (lineSnaps.length >= 2 && _chartResolution !== 'all') {
+    lineSnaps = sampleByInterval(lineSnaps, _chartResolution === '24h' ? 24 : 12);
+  }
+
+  // Fallback: use step history rows when no price snapshots yet
+  const fallback = lineSnaps.length < 2
+    ? [..._historyRows].sort((a, b) => new Date(a.created_at) - new Date(b.created_at))
+    : null;
+  const useSource = lineSnaps.length >= 2 ? lineSnaps : (fallback || []);
+
+  if (useSource.length < 2) {
+    chartWrap.classList.add('hidden');
+    if (_chartInstance) { _chartInstance.destroy(); _chartInstance = null; }
+    return;
+  }
+  chartWrap.classList.remove('hidden');
+
+  // Portfolio and invested lines (x = timestamp ms)
+  const portfolioData = useSource.map((s) => ({
+    x: new Date(s.created_at).getTime(),
+    y: s.portfolio_value,
+  }));
+  const investedData = useSource.map((s) => ({
+    x: new Date(s.created_at).getTime(),
+    y: s.invested,
+  }));
+
+  // Step markers: non-initial snapshots from history
+  const stepData = _historyRows
+    .filter((r) => {
+      try {
+        const m = r.meta ? (typeof r.meta === 'string' ? JSON.parse(r.meta) : r.meta) : null;
+        return !m || m.type !== 'initial';
+      } catch (_) { return true; }
+    })
+    .map((r) => ({ x: new Date(r.created_at).getTime(), y: r.portfolio_value }));
+
+  // Update existing chart in-place
+  if (_chartInstance) {
+    _chartInstance.data.datasets[0].data = portfolioData;
+    _chartInstance.data.datasets[1].data = investedData;
+    _chartInstance.data.datasets[2].data = stepData;
+    _chartInstance.update();
+    return;
+  }
+
+  // Create chart
+  _chartInstance = new Chart(canvas.getContext('2d'), {
+    type: 'line',
+    data: {
+      datasets: [
+        {
+          label: 'Portfolio',
+          data: portfolioData,
+          borderColor: '#34d399',
+          backgroundColor: 'rgba(52,211,153,0.07)',
+          fill: true,
+          tension: 0.3,
+          pointRadius: 2,
+          pointHoverRadius: 4,
+          order: 2,
+        },
+        {
+          label: 'Invested',
+          data: investedData,
+          borderColor: '#38bdf8',
+          backgroundColor: 'transparent',
+          fill: false,
+          tension: 0.3,
+          borderDash: [5, 4],
+          pointRadius: 2,
+          pointHoverRadius: 4,
+          order: 3,
+        },
+        {
+          label: 'Step applied',
+          type: 'scatter',
+          data: stepData,
+          backgroundColor: '#f59e0b',
+          borderColor: '#92400e',
+          borderWidth: 1,
+          pointStyle: 'triangle',
+          pointRadius: 7,
+          pointHoverRadius: 9,
+          order: 1,
+        },
+      ],
+    },
+    options: {
+      responsive: true,
+      maintainAspectRatio: false,
+      interaction: { mode: 'nearest', intersect: false, axis: 'x' },
+      plugins: {
+        legend: { display: false }, // legend replaced by inline HTML legend below chart
+        tooltip: {
+          callbacks: {
+            title: (items) => (items.length ? fmtTickLabel(items[0].parsed.x) : ''),
+            label: (ctx) => {
+              const label = ctx.dataset.label === 'Step applied' ? 'Step' : ctx.dataset.label;
+              return `${label}: ${formatUSD(ctx.parsed.y)}`;
+            },
+          },
+        },
+      },
+      scales: {
+        x: {
+          type: 'linear',
+          ticks: {
+            color: '#64748b',
+            font: { size: 10 },
+            maxTicksLimit: 6,
+            callback: fmtTickLabel,
+          },
+          grid: { color: '#1e293b' },
+        },
+        y: {
+          ticks: {
+            color: '#64748b',
+            font: { size: 10 },
+            callback: (v) =>
+              '$' + (Math.abs(v) >= 1000 ? (v / 1000).toFixed(1) + 'k' : String(v.toFixed(0))),
+          },
+          grid: { color: '#1e293b' },
+        },
+      },
+    },
+  });
+}
+
+function exportHistoryCsv() {
+  if (!_historyRows || !_historyRows.length) {
+    showToast('No history to export.');
+    return;
+  }
+
+  const headers = ['Date', 'Period', 'Invested (USD)', 'Portfolio Value (USD)', 'P&L (USD)', 'P&L (%)'];
+  const sorted = [..._historyRows].sort((a, b) => new Date(a.created_at) - new Date(b.created_at));
+  const csvRows = sorted.map((r) => {
+    const d = r.created_at ? new Date(r.created_at).toLocaleString() : '';
+    return [
+      `"${d}"`,
+      r.period_index,
+      r.invested.toFixed(2),
+      r.portfolio_value.toFixed(2),
+      r.pnl.toFixed(2),
+      r.pnl_percent.toFixed(4),
+    ].join(',');
+  });
+
+  const csv = [headers.join(','), ...csvRows].join('\n');
+  const blob = new Blob([csv], { type: 'text/csv' });
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement('a');
+  a.href = url;
+  a.download = `portfolio_history_${new Date().toISOString().slice(0, 10)}.csv`;
+  document.body.appendChild(a);
+  a.click();
+  document.body.removeChild(a);
+  URL.revokeObjectURL(url);
+  showToast('History exported as CSV ✓');
 }
 
 function attachEventListeners() {
@@ -994,6 +1312,8 @@ function attachEventListeners() {
     if (!window.confirm('Reset all configuration and data? This cannot be undone.')) return;
     state = structuredClone(defaultState);
     _hasHistory = false;
+    _historyRows = [];
+    _priceSnapshots = [];
     saveState();
     syncConfigInputsFromState();
     renderAssetsTable();
@@ -1025,6 +1345,49 @@ function attachEventListeners() {
       fetchHistory();
     });
   }
+
+  const exportCsvBtn = document.getElementById('exportCsvBtn');
+  if (exportCsvBtn) {
+    exportCsvBtn.addEventListener('click', exportHistoryCsv);
+  }
+
+  const clearHistoryBtn = document.getElementById('clearHistoryBtn');
+  if (clearHistoryBtn) {
+    clearHistoryBtn.addEventListener('click', async () => {
+      if (!window.confirm('Clear all history and price snapshots? This cannot be undone.')) return;
+      try {
+        await fetch('/api/history', { method: 'DELETE' });
+        _historyRows = [];
+        _priceSnapshots = [];
+        fetchHistory();
+        renderChart();
+        showToast('History cleared.');
+      } catch (err) {
+        console.error('Failed to clear history', err);
+      }
+    });
+  }
+
+  // Resolution toggle buttons
+  function applyResolutionBtn(active) {
+    document.querySelectorAll('.chart-res-btn').forEach((b) => {
+      const isActive = b.dataset.res === active;
+      b.className =
+        'chart-res-btn text-[10px] px-2 py-0.5 rounded border transition-colors ' +
+        (isActive
+          ? 'border-slate-500 text-slate-200 bg-slate-800'
+          : 'border-slate-700 text-slate-500 hover:text-slate-300');
+    });
+  }
+  applyResolutionBtn(_chartResolution);
+  document.querySelectorAll('.chart-res-btn').forEach((btn) => {
+    btn.addEventListener('click', () => {
+      _chartResolution = btn.dataset.res;
+      applyResolutionBtn(_chartResolution);
+      if (_chartInstance) { _chartInstance.destroy(); _chartInstance = null; }
+      renderChart();
+    });
+  });
 
   if (els.historyTableBody) {
     els.historyTableBody.addEventListener('click', async (e) => {
@@ -1100,6 +1463,7 @@ async function init() {
 
   fetchPrices();
   fetchHistory();
+  fetchPriceSnapshots();
 
   const isFirstRun = !state.config.initialValue && !state.config.stepPerPeriod;
   if (isFirstRun) {
