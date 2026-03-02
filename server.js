@@ -83,8 +83,8 @@ function serverTickerToId(symbol) {
   return TICKER_TO_COINGECKO_ID[upper] || upper.toLowerCase();
 }
 
-// ── Scheduled price snapshot (runs server-side every 12 h) ───────────────────
-const SNAPSHOT_INTERVAL_MS = 12 * 60 * 60 * 1000; // 12 hours
+// ── Scheduled price snapshot (runs server-side at 00:00, 06:00, 12:00, 18:00 UTC) ─
+const SNAPSHOT_INTERVAL_MS = 6 * 60 * 60 * 1000; // 6 hours
 
 async function recordScheduledPriceSnapshot() {
   // Skip if the server itself already recorded a snapshot within the last 12 h.
@@ -343,20 +343,31 @@ app.delete('/api/history/:id', (req, res) => {
   }
 });
 
+// Schedule a one-shot timeout aligned to the next 6-hour UTC boundary
+// (00:00, 06:00, 12:00, 18:00), then reschedule itself after each run.
+function scheduleNextSnapshot() {
+  const nowMs = Date.now();
+  const nextWindowMs = (Math.floor(nowMs / SNAPSHOT_INTERVAL_MS) + 1) * SNAPSHOT_INTERVAL_MS;
+  const delay = nextWindowMs - nowMs;
+  console.log(`[scheduler] Next snapshot at ${new Date(nextWindowMs).toISOString()} (in ${(delay / 3_600_000).toFixed(2)}h)`);
+  setTimeout(() => {
+    recordScheduledPriceSnapshot()
+      .catch((err) => console.error('[scheduler] Error:', err.message))
+      .finally(scheduleNextSnapshot);
+  }, delay);
+}
+
 app.listen(PORT, () => {
   console.log(`Server listening on port ${PORT}`);
   console.log(`Using SQLite database at ${dbPath}`);
 
-  // Run once 30 s after startup (gives Railway/local time to settle),
-  // then repeat every 12 h — fully independent of the browser being open.
+  // Catch-up run 30 s after startup in case a window was missed while the server was down.
   setTimeout(() => {
     recordScheduledPriceSnapshot().catch((err) =>
-      console.error('[scheduler] Error on first run:', err.message)
+      console.error('[scheduler] Error on startup run:', err.message)
     );
-    setInterval(() => {
-      recordScheduledPriceSnapshot().catch((err) =>
-        console.error('[scheduler] Error:', err.message)
-      );
-    }, SNAPSHOT_INTERVAL_MS);
   }, 30_000);
+
+  // Align future runs to fixed UTC windows: 00:00, 06:00, 12:00, 18:00.
+  scheduleNextSnapshot();
 });
