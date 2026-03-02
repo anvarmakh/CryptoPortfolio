@@ -47,9 +47,15 @@ db.exec(`
     id INTEGER PRIMARY KEY AUTOINCREMENT,
     created_at TEXT NOT NULL,
     portfolio_value REAL NOT NULL,
-    invested REAL NOT NULL
+    invested REAL NOT NULL,
+    source TEXT NOT NULL DEFAULT 'browser'
   );
 `);
+
+// Migrate existing DBs that pre-date the source column
+try {
+  db.exec("ALTER TABLE price_snapshots ADD COLUMN source TEXT NOT NULL DEFAULT 'browser'");
+} catch (_) { /* column already exists */ }
 
 // ── Ticker → CoinGecko ID (mirrored from main.js for server-side scheduling) ─
 const TICKER_TO_COINGECKO_ID = {
@@ -81,9 +87,11 @@ function serverTickerToId(symbol) {
 const SNAPSHOT_INTERVAL_MS = 12 * 60 * 60 * 1000; // 12 hours
 
 async function recordScheduledPriceSnapshot() {
-  // Skip if a snapshot already exists within the last 12 h
+  // Skip if the server itself already recorded a snapshot within the last 12 h.
+  // Browser-created snapshots (source='browser') are intentionally ignored here so
+  // the server runs on its own independent 12-hour clock regardless of user activity.
   const last = db
-    .prepare('SELECT created_at FROM price_snapshots ORDER BY datetime(created_at) DESC LIMIT 1')
+    .prepare("SELECT created_at FROM price_snapshots WHERE source = 'server' ORDER BY datetime(created_at) DESC LIMIT 1")
     .get();
   if (last) {
     const elapsedMs = Date.now() - new Date(last.created_at).getTime();
@@ -132,7 +140,7 @@ async function recordScheduledPriceSnapshot() {
 
   const now = new Date().toISOString();
   db.prepare(
-    'INSERT INTO price_snapshots (created_at, portfolio_value, invested) VALUES (?, ?, ?)'
+    "INSERT INTO price_snapshots (created_at, portfolio_value, invested, source) VALUES (?, ?, ?, 'server')"
   ).run(now, portfolioValue, invested);
   console.log(`[scheduler] Price snapshot recorded — portfolio $${portfolioValue.toFixed(2)}, invested $${invested.toFixed(2)}`);
 }
@@ -287,7 +295,7 @@ app.delete('/api/history', (req, res) => {
 app.get('/api/price-snapshots', (req, res) => {
   try {
     const rows = db.prepare(
-      'SELECT id, created_at, portfolio_value, invested FROM price_snapshots ORDER BY datetime(created_at) ASC'
+      'SELECT id, created_at, portfolio_value, invested, source FROM price_snapshots ORDER BY datetime(created_at) ASC'
     ).all();
     res.json(rows);
   } catch (err) {
@@ -297,7 +305,7 @@ app.get('/api/price-snapshots', (req, res) => {
 });
 
 app.post('/api/price-snapshots', (req, res) => {
-  const { createdAt, portfolioValue, invested } = req.body || {};
+  const { createdAt, portfolioValue, invested, source } = req.body || {};
   if (
     typeof createdAt !== 'string' ||
     typeof portfolioValue !== 'number' ||
@@ -307,10 +315,10 @@ app.post('/api/price-snapshots', (req, res) => {
   }
   try {
     const info = db.prepare(
-      'INSERT INTO price_snapshots (created_at, portfolio_value, invested) VALUES (?, ?, ?)'
-    ).run(createdAt, portfolioValue, invested);
+      'INSERT INTO price_snapshots (created_at, portfolio_value, invested, source) VALUES (?, ?, ?, ?)'
+    ).run(createdAt, portfolioValue, invested, source || 'browser');
     const row = db.prepare(
-      'SELECT id, created_at, portfolio_value, invested FROM price_snapshots WHERE id = ?'
+      'SELECT id, created_at, portfolio_value, invested, source FROM price_snapshots WHERE id = ?'
     ).get(info.lastInsertRowid);
     res.status(201).json(row);
   } catch (err) {
