@@ -40,8 +40,8 @@ let _historyRows = [];
 // Periodic price snapshots for the continuous performance chart.
 let _priceSnapshots = [];
 
-// Chart resolution filter: '12h' | '24h' | 'all'
-let _chartResolution = '12h';
+// Chart resolution filter: '7d' | '30d' | '90d' | 'all'
+let _chartResolution = '7d';
 
 // Chart.js instance (reused; data updated in-place).
 let _chartInstance = null;
@@ -1033,7 +1033,7 @@ function renderChart() {
 
   // --- resolve line data source ---
   let lineSnaps = _priceSnapshots; // already sorted ASC
-  const resHours = { '6h': 6, '12h': 12, '24h': 24 };
+  const resHours = { '7d': 6, '30d': 24, '90d': 72 };
   if (lineSnaps.length >= 2 && _chartResolution !== 'all') {
     lineSnaps = sampleByInterval(lineSnaps, resHours[_chartResolution] ?? 12);
   }
