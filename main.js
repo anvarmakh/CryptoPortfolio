@@ -233,7 +233,6 @@ function getElements() {
     historyError: document.getElementById('historyError'),
 
     // Buttons & controls
-    refreshHistoryBtn: document.getElementById('refreshHistoryBtn'),
     saveConfigBtn: document.getElementById('saveConfigBtn'),
     addAssetBtn: document.getElementById('addAssetBtn'),
     refreshPricesBtn: document.getElementById('refreshPricesBtn'),
@@ -1034,8 +1033,9 @@ function renderChart() {
 
   // --- resolve line data source ---
   let lineSnaps = _priceSnapshots; // already sorted ASC
+  const resHours = { '6h': 6, '12h': 12, '24h': 24 };
   if (lineSnaps.length >= 2 && _chartResolution !== 'all') {
-    lineSnaps = sampleByInterval(lineSnaps, _chartResolution === '24h' ? 24 : 12);
+    lineSnaps = sampleByInterval(lineSnaps, resHours[_chartResolution] ?? 12);
   }
 
   // Fallback: use step history rows when no price snapshots yet
@@ -1126,9 +1126,18 @@ function renderChart() {
       responsive: true,
       maintainAspectRatio: false,
       interaction: { mode: 'nearest', intersect: false, axis: 'x' },
+      layout: { padding: { top: 12, bottom: 8 } },
       plugins: {
         legend: { display: false }, // legend replaced by inline HTML legend below chart
         tooltip: {
+          backgroundColor: '#0f172a',
+          borderColor: '#334155',
+          borderWidth: 1,
+          titleColor: '#94a3b8',
+          bodyColor: '#e2e8f0',
+          padding: 10,
+          bodyFont: { family: "'IBM Plex Mono', monospace", size: 11 },
+          titleFont: { family: "'IBM Plex Mono', monospace", size: 10 },
           callbacks: {
             title: (items) => (items.length ? fmtTickLabel(items[0].parsed.x) : ''),
             label: (ctx) => {
@@ -1142,21 +1151,25 @@ function renderChart() {
         x: {
           type: 'linear',
           ticks: {
-            color: '#64748b',
-            font: { size: 10 },
+            color: '#94a3b8',
+            font: { family: "'IBM Plex Mono', monospace", size: 10 },
             maxTicksLimit: 6,
             callback: fmtTickLabel,
+            padding: 6,
           },
-          grid: { color: '#1e293b' },
+          grid: { color: 'rgba(30,41,59,0.8)' },
+          border: { color: '#1e293b' },
         },
         y: {
           ticks: {
-            color: '#64748b',
-            font: { size: 10 },
+            color: '#94a3b8',
+            font: { family: "'IBM Plex Mono', monospace", size: 10 },
             callback: (v) =>
               '$' + (Math.abs(v) >= 1000 ? (v / 1000).toFixed(1) + 'k' : String(v.toFixed(0))),
+            padding: 6,
           },
-          grid: { color: '#1e293b' },
+          grid: { color: 'rgba(30,41,59,0.8)' },
+          border: { color: '#1e293b' },
         },
       },
     },
@@ -1340,32 +1353,9 @@ function attachEventListeners() {
     }
   );
 
-  if (els.refreshHistoryBtn) {
-    els.refreshHistoryBtn.addEventListener('click', () => {
-      fetchHistory();
-    });
-  }
-
   const exportCsvBtn = document.getElementById('exportCsvBtn');
   if (exportCsvBtn) {
     exportCsvBtn.addEventListener('click', exportHistoryCsv);
-  }
-
-  const clearHistoryBtn = document.getElementById('clearHistoryBtn');
-  if (clearHistoryBtn) {
-    clearHistoryBtn.addEventListener('click', async () => {
-      if (!window.confirm('Clear all history and price snapshots? This cannot be undone.')) return;
-      try {
-        await fetch('/api/history', { method: 'DELETE' });
-        _historyRows = [];
-        _priceSnapshots = [];
-        fetchHistory();
-        renderChart();
-        showToast('History cleared.');
-      } catch (err) {
-        console.error('Failed to clear history', err);
-      }
-    });
   }
 
   // Resolution toggle buttons

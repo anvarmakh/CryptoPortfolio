@@ -242,16 +242,6 @@
                          hover:text-slate-200 hover:border-slate-600 transition-colors">
             ↓ CSV
           </button>
-          <button id="clearHistoryBtn"
-                  class="text-xs px-3 py-1.5 rounded-lg border border-slate-700 text-slate-400
-                         hover:text-rose-300 hover:border-rose-800 transition-colors">
-            Clear
-          </button>
-          <button id="refreshHistoryBtn"
-                  class="text-xs px-3 py-1.5 rounded-lg border border-slate-700 text-slate-400
-                         hover:text-slate-200 hover:border-slate-600 transition-colors">
-            Refresh
-          </button>
         </div>
       </div>
       <div class="px-5 py-4">
@@ -303,12 +293,13 @@
           <div class="flex items-center justify-between mb-3">
             <div class="text-[10px] text-slate-500 uppercase tracking-wider">Portfolio vs Invested</div>
             <div class="flex items-center gap-1">
+              <button data-res="6h"  class="chart-res-btn text-[10px] px-2 py-0.5 rounded border transition-colors">6h</button>
               <button data-res="12h" class="chart-res-btn text-[10px] px-2 py-0.5 rounded border transition-colors">12h</button>
               <button data-res="24h" class="chart-res-btn text-[10px] px-2 py-0.5 rounded border transition-colors">24h</button>
               <button data-res="all" class="chart-res-btn text-[10px] px-2 py-0.5 rounded border transition-colors">All</button>
             </div>
           </div>
-          <div style="position:relative;height:200px">
+          <div style="position:relative;height:220px">
             <canvas id="historyChart"></canvas>
           </div>
           <div class="mt-2 flex items-center gap-3 text-[10px] text-slate-600">
