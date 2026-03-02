@@ -1017,11 +1017,7 @@ async function maybeRecordPriceSnapshot() {
 
 function fmtTickLabel(ms) {
   const d = new Date(ms);
-  return (
-    d.toLocaleDateString(undefined, { month: 'short', day: 'numeric' }) +
-    ' ' +
-    d.toLocaleTimeString(undefined, { hour: '2-digit', minute: '2-digit', hour12: false })
-  );
+  return `${d.getDate()}/${d.getMonth() + 1}`;
 }
 
 // Chart uses _priceSnapshots for the continuous lines and _historyRows for step markers.
