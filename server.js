@@ -57,26 +57,10 @@ try {
   db.exec("ALTER TABLE price_snapshots ADD COLUMN source TEXT NOT NULL DEFAULT 'browser'");
 } catch (_) { /* column already exists */ }
 
-// ── Ticker → CoinGecko ID (mirrored from main.js for server-side scheduling) ─
-const TICKER_TO_COINGECKO_ID = {
-  BTC: 'bitcoin', ETH: 'ethereum', SOL: 'solana', BNB: 'binancecoin',
-  XRP: 'ripple', DOGE: 'dogecoin', ADA: 'cardano', TRX: 'tron',
-  AVAX: 'avalanche-2', LINK: 'chainlink', DOT: 'polkadot',
-  MATIC: 'matic-network', POL: 'matic-network', SHIB: 'shiba-inu',
-  LTC: 'litecoin', UNI: 'uniswap', ATOM: 'cosmos', TON: 'the-open-network',
-  OP: 'optimism', ARB: 'arbitrum', FTM: 'fantom', NEAR: 'near',
-  APT: 'aptos', SUI: 'sui', INJ: 'injective-protocol', PEPE: 'pepe',
-  WIF: 'dogwifcoin', BONK: 'bonk', JUP: 'jupiter-exchange-solana',
-  SEI: 'sei-network', TIA: 'celestia', PYTH: 'pyth-network',
-  STX: 'blockstack', IMX: 'immutable-x', RUNE: 'thorchain',
-  FET: 'fetch-ai', RENDER: 'render-token', GRT: 'the-graph',
-  LDO: 'lido-dao', MKR: 'maker', AAVE: 'aave', SNX: 'havven',
-  CRV: 'curve-dao-token', COMP: 'compound-governance-token',
-  ALGO: 'algorand', XLM: 'stellar', VET: 'vechain',
-  HBAR: 'hedera-hashgraph', ICP: 'internet-computer', FIL: 'filecoin',
-  SAND: 'the-sandbox', MANA: 'decentraland', AXS: 'axie-infinity',
-  CHZ: 'chiliz',
-};
+// ── Ticker → CoinGecko ID (single source of truth in ticker-map.json) ────────
+const TICKER_TO_COINGECKO_ID = JSON.parse(
+  fs.readFileSync(path.join(__dirname, 'ticker-map.json'), 'utf-8')
+);
 
 function serverTickerToId(symbol) {
   const upper = String(symbol || '').toUpperCase().trim();
@@ -87,9 +71,9 @@ function serverTickerToId(symbol) {
 const SNAPSHOT_INTERVAL_MS = 6 * 60 * 60 * 1000; // 6 hours
 
 async function recordScheduledPriceSnapshot() {
-  // Skip if the server itself already recorded a snapshot within the last 12 h.
+  // Skip if the server itself already recorded a snapshot within the last 6 h.
   // Browser-created snapshots (source='browser') are intentionally ignored here so
-  // the server runs on its own independent 12-hour clock regardless of user activity.
+  // the server runs on its own independent clock regardless of user activity.
   const last = db
     .prepare("SELECT created_at FROM price_snapshots WHERE source = 'server' ORDER BY datetime(created_at) DESC LIMIT 1")
     .get();
@@ -107,7 +91,12 @@ async function recordScheduledPriceSnapshot() {
   if (!stateRow) { console.log('[scheduler] No app state saved yet, skipping'); return; }
 
   let appState;
-  try { appState = JSON.parse(stateRow.state_json); } catch { return; }
+  try {
+    appState = JSON.parse(stateRow.state_json);
+  } catch (e) {
+    console.error('[scheduler] Failed to parse app_state JSON', e.message);
+    return;
+  }
 
   const assets = Array.isArray(appState.assets) ? appState.assets : [];
   const invested = Number(appState.config?.investedSoFar) || 0;
@@ -119,11 +108,27 @@ async function recordScheduledPriceSnapshot() {
   const ids = [...idSet];
   if (!ids.length) return;
 
-  // Fetch current prices from CoinGecko
+  // Fetch current prices from CoinGecko with retry (2 attempts, 5s backoff)
   const url =
     'https://api.coingecko.com/api/v3/simple/price?vs_currencies=usd&ids=' +
     encodeURIComponent(ids.join(','));
-  const { data: priceData } = await axios.get(url, { timeout: 15000 });
+
+  let priceData;
+  for (let attempt = 1; attempt <= 3; attempt++) {
+    try {
+      const resp = await axios.get(url, { timeout: 15000 });
+      priceData = resp.data;
+      break;
+    } catch (e) {
+      console.warn(`[scheduler] CoinGecko attempt ${attempt}/3 failed: ${e.message}`);
+      if (attempt < 3) await new Promise((r) => setTimeout(r, 5000 * attempt));
+    }
+  }
+
+  if (!priceData || typeof priceData !== 'object' || priceData.status) {
+    console.error('[scheduler] CoinGecko returned invalid data, skipping snapshot');
+    return;
+  }
 
   // Compute portfolio value
   let portfolioValue = 0;
@@ -148,9 +153,10 @@ async function recordScheduledPriceSnapshot() {
 app.use(cors());
 app.use(express.json());
 
-// Serve only the two frontend files; never expose server.js, package.json, or the DB.
+// Serve only the frontend files; never expose server.js, package.json, or the DB.
 app.get('/', (_req, res) => res.sendFile(path.join(__dirname, 'index.html')));
 app.get('/main.js', (_req, res) => res.sendFile(path.join(__dirname, 'main.js')));
+app.get('/ticker-map.json', (_req, res) => res.sendFile(path.join(__dirname, 'ticker-map.json')));
 
 app.get('/health', (req, res) => {
   res.json({ status: 'ok' });
