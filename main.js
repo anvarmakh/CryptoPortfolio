@@ -976,9 +976,16 @@ async function maybeRecordPriceSnapshot() {
   }
 }
 
-function fmtTickLabel(ms) {
+function fmtAxisLabel(ms) {
   const d = new Date(ms);
   return `${d.getDate()}/${d.getMonth() + 1}`;
+}
+
+function fmtTooltipLabel(ms) {
+  const d = new Date(ms);
+  const hh = String(d.getHours()).padStart(2, '0');
+  const mm = String(d.getMinutes()).padStart(2, '0');
+  return `${d.getDate()}/${d.getMonth() + 1} ${hh}:${mm}`;
 }
 
 // Chart uses _priceSnapshots for the continuous lines and _historyRows for step markers.
@@ -1060,6 +1067,7 @@ function renderChart() {
           backgroundColor: 'rgba(52,211,153,0.07)',
           fill: true,
           tension: 0.3,
+          pointStyle: 'circle',
           pointRadius: 2,
           pointHoverRadius: 4,
           order: 2,
@@ -1072,6 +1080,7 @@ function renderChart() {
           fill: false,
           tension: 0.3,
           borderDash: [5, 4],
+          pointStyle: 'circle',
           pointRadius: 2,
           pointHoverRadius: 4,
           order: 3,
@@ -1107,7 +1116,7 @@ function renderChart() {
           bodyFont: { family: "'IBM Plex Sans', sans-serif", size: 11 },
           titleFont: { family: "'IBM Plex Sans', sans-serif", size: 10 },
           callbacks: {
-            title: (items) => (items.length ? fmtTickLabel(items[0].parsed.x) : ''),
+            title: (items) => (items.length ? fmtTooltipLabel(items[0].parsed.x) : ''),
             label: (ctx) => {
               const label = ctx.dataset.label === 'Step applied' ? 'Step' : ctx.dataset.label;
               return `${label}: ${formatUSD(ctx.parsed.y)}`;
@@ -1122,7 +1131,7 @@ function renderChart() {
             color: '#94a3b8',
             font: { family: "'IBM Plex Sans', sans-serif", size: 10 },
             maxTicksLimit: 6,
-            callback: fmtTickLabel,
+            callback: fmtAxisLabel,
             padding: 6,
           },
           grid: { color: 'rgba(30,41,59,0.8)' },
