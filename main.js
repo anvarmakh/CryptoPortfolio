@@ -8,7 +8,6 @@ const defaultState = {
     initialValue: 0,
     stepPerPeriod: 1000,
     maxAddition: 2000,
-    periodsPerMonth: 2,
     completedPeriods: 0,
     investedSoFar: 0,
   },
@@ -46,63 +45,17 @@ let _chartResolution = '7d';
 // Chart.js instance (reused; data updated in-place).
 let _chartInstance = null;
 
-// ── Ticker → CoinGecko ID mapping ────────────────────────────────────────────
-const TICKER_TO_COINGECKO_ID = {
-  BTC: 'bitcoin',
-  ETH: 'ethereum',
-  SOL: 'solana',
-  BNB: 'binancecoin',
-  XRP: 'ripple',
-  DOGE: 'dogecoin',
-  ADA: 'cardano',
-  TRX: 'tron',
-  AVAX: 'avalanche-2',
-  LINK: 'chainlink',
-  DOT: 'polkadot',
-  MATIC: 'matic-network',
-  POL: 'matic-network',
-  SHIB: 'shiba-inu',
-  LTC: 'litecoin',
-  UNI: 'uniswap',
-  ATOM: 'cosmos',
-  TON: 'the-open-network',
-  OP: 'optimism',
-  ARB: 'arbitrum',
-  FTM: 'fantom',
-  NEAR: 'near',
-  APT: 'aptos',
-  SUI: 'sui',
-  INJ: 'injective-protocol',
-  PEPE: 'pepe',
-  WIF: 'dogwifcoin',
-  BONK: 'bonk',
-  JUP: 'jupiter-exchange-solana',
-  SEI: 'sei-network',
-  TIA: 'celestia',
-  PYTH: 'pyth-network',
-  STX: 'blockstack',
-  IMX: 'immutable-x',
-  RUNE: 'thorchain',
-  FET: 'fetch-ai',
-  RENDER: 'render-token',
-  GRT: 'the-graph',
-  LDO: 'lido-dao',
-  MKR: 'maker',
-  AAVE: 'aave',
-  SNX: 'havven',
-  CRV: 'curve-dao-token',
-  COMP: 'compound-governance-token',
-  ALGO: 'algorand',
-  XLM: 'stellar',
-  VET: 'vechain',
-  HBAR: 'hedera-hashgraph',
-  ICP: 'internet-computer',
-  FIL: 'filecoin',
-  SAND: 'the-sandbox',
-  MANA: 'decentraland',
-  AXS: 'axie-infinity',
-  CHZ: 'chiliz',
-};
+// ── Ticker → CoinGecko ID mapping (fetched from server at init) ──────────────
+let TICKER_TO_COINGECKO_ID = {};
+
+async function fetchTickerMap() {
+  try {
+    const res = await fetch('/ticker-map.json');
+    if (res.ok) TICKER_TO_COINGECKO_ID = await res.json();
+  } catch (e) {
+    console.warn('Failed to fetch ticker map from server', e);
+  }
+}
 
 function tickerToId(symbol) {
   const upper = String(symbol || '').toUpperCase().trim();
@@ -310,7 +263,7 @@ function renderAssetsTable() {
     const unitsNum = Number(asset.units) || 0;
     const unitsDisplay = unitsNum ? unitsNum.toFixed(4) : '–';
     const unitsCell = unitsLocked
-      ? `<td class="py-2 px-2 text-right text-slate-400 text-xs whitespace-nowrap hidden sm:table-cell">${unitsDisplay}</td>`
+      ? `<td class="py-2 px-2 text-right text-slate-400 text-xs whitespace-nowrap hidden sm:table-cell cursor-help" title="Units are locked after the first snapshot. Use &quot;Mark step applied&quot; to update holdings.">${unitsDisplay} <span class="text-slate-600 text-[10px]">🔒</span></td>`
       : `<td class="py-2 px-2 text-right whitespace-nowrap hidden sm:table-cell">
            <input data-index="${index}" data-field="units" type="number" step="0.00000001"
                   class="number-input w-24 rounded-md border border-slate-700 bg-slate-900/80 px-2 py-1 text-xs text-right text-slate-100 focus:outline-none focus:ring-1 focus:ring-emerald-500/70 focus:border-emerald-400"
@@ -415,14 +368,19 @@ function renderSummaryAndNextStep() {
   if (state.lastPricesFetch) {
     const date = new Date(state.lastPricesFetch);
     const minsAgo = Math.round((Date.now() - date.getTime()) / 60000);
+    const stale = minsAgo >= 30;
     els.lastUpdated.textContent =
       minsAgo < 1
         ? 'Prices: just now'
         : minsAgo < 60
-        ? `Prices: ${minsAgo}m ago`
-        : `Prices: ${date.toLocaleTimeString()}`;
+        ? `Prices: ${minsAgo}m ago` + (stale ? ' — may be stale' : '')
+        : `Prices: ${date.toLocaleTimeString()} — may be stale`;
+    els.lastUpdated.className = stale
+      ? 'text-[11px] text-amber-400 mt-0.5'
+      : 'text-[11px] text-slate-500 mt-0.5';
   } else {
     els.lastUpdated.textContent = 'Prices not yet loaded · refresh to start';
+    els.lastUpdated.className = 'text-[11px] text-slate-500 mt-0.5';
   }
 }
 
@@ -486,6 +444,9 @@ function renderStepDetailsAndTrades() {
     els.stepError.textContent =
       `Allocation total is ${totalAlloc.toFixed(1)}% — it must equal exactly 100% for per-asset trade amounts to be correct.`;
     els.stepError.classList.remove('hidden');
+    els.tradesEmpty.classList.remove('hidden');
+    els.tradesContent.classList.add('hidden');
+    return;
   }
 
   const details = computeStepDetails();
@@ -613,7 +574,7 @@ function computePerAssetTrades(stepDetails) {
     const weight = basis / positiveTotal;
     const suggestedAbs = weight * Math.abs(cappedChange);
     const suggestedValue = isInvest ? suggestedAbs : -suggestedAbs;
-    const suggestedUnits = t.price ? suggestedValue / t.price : NaN;
+    const suggestedUnits = t.price ? suggestedValue / t.price : 0;
     return {
       ...t,
       suggestedValue,
@@ -1047,6 +1008,17 @@ function renderChart() {
   }
   chartWrap.classList.remove('hidden');
 
+  // Show data source hint when using fallback
+  const chartSourceHint = document.getElementById('chartSourceHint');
+  if (chartSourceHint) {
+    if (fallback) {
+      chartSourceHint.textContent = 'Showing step history (price snapshots not yet available)';
+      chartSourceHint.classList.remove('hidden');
+    } else {
+      chartSourceHint.classList.add('hidden');
+    }
+  }
+
   // Portfolio and invested lines (x = timestamp ms)
   const portfolioData = useSource.map((s) => ({
     x: new Date(s.created_at).getTime(),
@@ -1132,8 +1104,8 @@ function renderChart() {
           titleColor: '#94a3b8',
           bodyColor: '#e2e8f0',
           padding: 10,
-          bodyFont: { family: "'IBM Plex Mono', monospace", size: 11 },
-          titleFont: { family: "'IBM Plex Mono', monospace", size: 10 },
+          bodyFont: { family: "'IBM Plex Sans', sans-serif", size: 11 },
+          titleFont: { family: "'IBM Plex Sans', sans-serif", size: 10 },
           callbacks: {
             title: (items) => (items.length ? fmtTickLabel(items[0].parsed.x) : ''),
             label: (ctx) => {
@@ -1148,7 +1120,7 @@ function renderChart() {
           type: 'linear',
           ticks: {
             color: '#94a3b8',
-            font: { family: "'IBM Plex Mono', monospace", size: 10 },
+            font: { family: "'IBM Plex Sans', sans-serif", size: 10 },
             maxTicksLimit: 6,
             callback: fmtTickLabel,
             padding: 6,
@@ -1159,7 +1131,7 @@ function renderChart() {
         y: {
           ticks: {
             color: '#94a3b8',
-            font: { family: "'IBM Plex Mono', monospace", size: 10 },
+            font: { family: "'IBM Plex Sans', sans-serif", size: 10 },
             callback: (v) =>
               '$' + (Math.abs(v) >= 1000 ? (v / 1000).toFixed(1) + 'k' : String(v.toFixed(0))),
             padding: 6,
@@ -1249,7 +1221,7 @@ function attachEventListeners() {
       const total = state.assets.reduce((s, a) => s + (Number(a.allocation) || 0), 0);
       els.allocationTotal.textContent = `${total.toFixed(1)}%`;
       els.allocationTotal.className =
-        'font-semibold ' +
+        'text-xs font-semibold ' +
         (Math.abs(total - 100) < 0.01 ? 'text-emerald-300' : 'text-amber-300');
     } else if (field === 'units' && !_hasHistory) {
       asset.units = Number(target.value) || 0;
@@ -1289,6 +1261,7 @@ function attachEventListeners() {
   }
 
   els.applyStepBtn.addEventListener('click', () => {
+    if (!window.confirm('Mark this step as applied? This will update your holdings and create a snapshot.')) return;
     const details = computeStepDetails();
     const { config } = state;
 
@@ -1318,7 +1291,7 @@ function attachEventListeners() {
   });
 
   els.resetAllBtn.addEventListener('click', async () => {
-    if (!window.confirm('Reset all configuration and data? This cannot be undone.')) return;
+    if (!window.confirm('Reset all configuration, history, and performance chart data? This cannot be undone.')) return;
     state = structuredClone(defaultState);
     _hasHistory = false;
     _historyRows = [];
@@ -1370,7 +1343,6 @@ function attachEventListeners() {
     btn.addEventListener('click', () => {
       _chartResolution = btn.dataset.res;
       applyResolutionBtn(_chartResolution);
-      if (_chartInstance) { _chartInstance.destroy(); _chartInstance = null; }
       renderChart();
     });
   });
@@ -1381,6 +1353,7 @@ function attachEventListeners() {
       if (!btn) return;
       const id = Number(btn.dataset.id);
       if (!id) return;
+      if (!window.confirm('Delete this history record? This cannot be undone.')) return;
       btn.disabled = true;
       btn.textContent = '…';
       try {
@@ -1447,6 +1420,7 @@ async function init() {
     console.warn('Could not load state from server — using local state', e);
   }
 
+  await fetchTickerMap();
   fetchPrices();
   fetchHistory();
   fetchPriceSnapshots();
@@ -1457,38 +1431,5 @@ async function init() {
     if (panel) panel.open = true;
   }
 }
-
-// ── Font toggle ──────────────────────────────────────────────────────────────
-(function initFontToggle() {
-  const FONT_KEY = 'va_font';
-  const MONO_CLASS = 'font-mono-mode';
-
-  const sansBtn = document.getElementById('fontSansBtn');
-  const monoBtn = document.getElementById('fontMonoBtn');
-
-  function applyFont(mono) {
-    document.body.classList.toggle(MONO_CLASS, mono);
-    if (sansBtn && monoBtn) {
-      sansBtn.className = mono
-        ? 'px-2.5 py-1 text-slate-500 hover:text-slate-300 transition-colors'
-        : 'px-2.5 py-1 text-slate-300 bg-slate-800 transition-colors';
-      monoBtn.className = mono
-        ? 'px-2.5 py-1 text-slate-300 bg-slate-800 transition-colors font-mono'
-        : 'px-2.5 py-1 text-slate-500 hover:text-slate-300 transition-colors font-mono';
-    }
-  }
-
-  const saved = localStorage.getItem(FONT_KEY);
-  applyFont(saved === 'mono');
-
-  if (sansBtn) sansBtn.addEventListener('click', () => {
-    localStorage.setItem(FONT_KEY, 'sans');
-    applyFont(false);
-  });
-  if (monoBtn) monoBtn.addEventListener('click', () => {
-    localStorage.setItem(FONT_KEY, 'mono');
-    applyFont(true);
-  });
-})();
 
 document.addEventListener('DOMContentLoaded', init);

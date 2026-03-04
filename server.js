@@ -57,26 +57,10 @@ try {
   db.exec("ALTER TABLE price_snapshots ADD COLUMN source TEXT NOT NULL DEFAULT 'browser'");
 } catch (_) { /* column already exists */ }
 
-// ── Ticker → CoinGecko ID (mirrored from main.js for server-side scheduling) ─
-const TICKER_TO_COINGECKO_ID = {
-  BTC: 'bitcoin', ETH: 'ethereum', SOL: 'solana', BNB: 'binancecoin',
-  XRP: 'ripple', DOGE: 'dogecoin', ADA: 'cardano', TRX: 'tron',
-  AVAX: 'avalanche-2', LINK: 'chainlink', DOT: 'polkadot',
-  MATIC: 'matic-network', POL: 'matic-network', SHIB: 'shiba-inu',
-  LTC: 'litecoin', UNI: 'uniswap', ATOM: 'cosmos', TON: 'the-open-network',
-  OP: 'optimism', ARB: 'arbitrum', FTM: 'fantom', NEAR: 'near',
-  APT: 'aptos', SUI: 'sui', INJ: 'injective-protocol', PEPE: 'pepe',
-  WIF: 'dogwifcoin', BONK: 'bonk', JUP: 'jupiter-exchange-solana',
-  SEI: 'sei-network', TIA: 'celestia', PYTH: 'pyth-network',
-  STX: 'blockstack', IMX: 'immutable-x', RUNE: 'thorchain',
-  FET: 'fetch-ai', RENDER: 'render-token', GRT: 'the-graph',
-  LDO: 'lido-dao', MKR: 'maker', AAVE: 'aave', SNX: 'havven',
-  CRV: 'curve-dao-token', COMP: 'compound-governance-token',
-  ALGO: 'algorand', XLM: 'stellar', VET: 'vechain',
-  HBAR: 'hedera-hashgraph', ICP: 'internet-computer', FIL: 'filecoin',
-  SAND: 'the-sandbox', MANA: 'decentraland', AXS: 'axie-infinity',
-  CHZ: 'chiliz',
-};
+// ── Ticker → CoinGecko ID (single source of truth in ticker-map.json) ────────
+const TICKER_TO_COINGECKO_ID = JSON.parse(
+  fs.readFileSync(path.join(__dirname, 'ticker-map.json'), 'utf-8')
+);
 
 function serverTickerToId(symbol) {
   const upper = String(symbol || '').toUpperCase().trim();
@@ -148,9 +132,10 @@ async function recordScheduledPriceSnapshot() {
 app.use(cors());
 app.use(express.json());
 
-// Serve only the two frontend files; never expose server.js, package.json, or the DB.
+// Serve only the frontend files; never expose server.js, package.json, or the DB.
 app.get('/', (_req, res) => res.sendFile(path.join(__dirname, 'index.html')));
 app.get('/main.js', (_req, res) => res.sendFile(path.join(__dirname, 'main.js')));
+app.get('/ticker-map.json', (_req, res) => res.sendFile(path.join(__dirname, 'ticker-map.json')));
 
 app.get('/health', (req, res) => {
   res.json({ status: 'ok' });
