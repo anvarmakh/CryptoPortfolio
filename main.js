@@ -978,7 +978,9 @@ async function maybeRecordPriceSnapshot() {
 
 function fmtTickLabel(ms) {
   const d = new Date(ms);
-  return `${d.getDate()}/${d.getMonth() + 1}`;
+  const hh = String(d.getHours()).padStart(2, '0');
+  const mm = String(d.getMinutes()).padStart(2, '0');
+  return `${d.getDate()}/${d.getMonth() + 1} ${hh}:${mm}`;
 }
 
 // Chart uses _priceSnapshots for the continuous lines and _historyRows for step markers.
@@ -1060,6 +1062,7 @@ function renderChart() {
           backgroundColor: 'rgba(52,211,153,0.07)',
           fill: true,
           tension: 0.3,
+          pointStyle: 'circle',
           pointRadius: 2,
           pointHoverRadius: 4,
           order: 2,
@@ -1072,6 +1075,7 @@ function renderChart() {
           fill: false,
           tension: 0.3,
           borderDash: [5, 4],
+          pointStyle: 'circle',
           pointRadius: 2,
           pointHoverRadius: 4,
           order: 3,
