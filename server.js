@@ -71,9 +71,9 @@ function serverTickerToId(symbol) {
 const SNAPSHOT_INTERVAL_MS = 6 * 60 * 60 * 1000; // 6 hours
 
 async function recordScheduledPriceSnapshot() {
-  // Skip if the server itself already recorded a snapshot within the last 12 h.
+  // Skip if the server itself already recorded a snapshot within the last 6 h.
   // Browser-created snapshots (source='browser') are intentionally ignored here so
-  // the server runs on its own independent 12-hour clock regardless of user activity.
+  // the server runs on its own independent clock regardless of user activity.
   const last = db
     .prepare("SELECT created_at FROM price_snapshots WHERE source = 'server' ORDER BY datetime(created_at) DESC LIMIT 1")
     .get();
@@ -91,7 +91,12 @@ async function recordScheduledPriceSnapshot() {
   if (!stateRow) { console.log('[scheduler] No app state saved yet, skipping'); return; }
 
   let appState;
-  try { appState = JSON.parse(stateRow.state_json); } catch { return; }
+  try {
+    appState = JSON.parse(stateRow.state_json);
+  } catch (e) {
+    console.error('[scheduler] Failed to parse app_state JSON', e.message);
+    return;
+  }
 
   const assets = Array.isArray(appState.assets) ? appState.assets : [];
   const invested = Number(appState.config?.investedSoFar) || 0;
@@ -103,11 +108,27 @@ async function recordScheduledPriceSnapshot() {
   const ids = [...idSet];
   if (!ids.length) return;
 
-  // Fetch current prices from CoinGecko
+  // Fetch current prices from CoinGecko with retry (2 attempts, 5s backoff)
   const url =
     'https://api.coingecko.com/api/v3/simple/price?vs_currencies=usd&ids=' +
     encodeURIComponent(ids.join(','));
-  const { data: priceData } = await axios.get(url, { timeout: 15000 });
+
+  let priceData;
+  for (let attempt = 1; attempt <= 3; attempt++) {
+    try {
+      const resp = await axios.get(url, { timeout: 15000 });
+      priceData = resp.data;
+      break;
+    } catch (e) {
+      console.warn(`[scheduler] CoinGecko attempt ${attempt}/3 failed: ${e.message}`);
+      if (attempt < 3) await new Promise((r) => setTimeout(r, 5000 * attempt));
+    }
+  }
+
+  if (!priceData || typeof priceData !== 'object' || priceData.status) {
+    console.error('[scheduler] CoinGecko returned invalid data, skipping snapshot');
+    return;
+  }
 
   // Compute portfolio value
   let portfolioValue = 0;
