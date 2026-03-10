@@ -67,6 +67,66 @@ function serverTickerToId(symbol) {
   return TICKER_TO_COINGECKO_ID[upper] || upper.toLowerCase();
 }
 
+// ── In-memory price cache (avoids hammering CoinGecko on repeated requests) ──
+const PRICE_CACHE_TTL_MS = 60 * 1000; // 1 minute
+const priceCache = { data: null, fetchedAt: 0, ids: '' };
+
+/**
+ * Fetch prices from CoinGecko with retry + exponential back-off.
+ * Handles 429 Rate-Limit responses by honouring the Retry-After header
+ * (or defaulting to a 60 s wait) before retrying.
+ *
+ * @param {string[]} ids  CoinGecko coin IDs to fetch
+ * @param {number}   maxAttempts
+ * @returns {Promise<object>}  Raw CoinGecko price map
+ */
+async function fetchCoinGeckoPrices(ids, maxAttempts = 4) {
+  const sortedIds = [...ids].sort().join(',');
+
+  // Serve from cache when the same id set was recently fetched
+  if (
+    priceCache.ids === sortedIds &&
+    Date.now() - priceCache.fetchedAt < PRICE_CACHE_TTL_MS
+  ) {
+    return priceCache.data;
+  }
+
+  const url =
+    'https://api.coingecko.com/api/v3/simple/price?vs_currencies=usd&ids=' +
+    encodeURIComponent(sortedIds);
+
+  let lastError;
+  for (let attempt = 1; attempt <= maxAttempts; attempt++) {
+    try {
+      const resp = await axios.get(url, { timeout: 15000 });
+      // Persist to cache
+      priceCache.data = resp.data;
+      priceCache.fetchedAt = Date.now();
+      priceCache.ids = sortedIds;
+      return resp.data;
+    } catch (err) {
+      lastError = err;
+      const status = err.response?.status;
+      if (status === 429) {
+        // Respect Retry-After if present, otherwise back off 60 s then 120 s …
+        const retryAfter = parseInt(err.response?.headers?.['retry-after'] || '0', 10);
+        const waitMs = (retryAfter > 0 ? retryAfter : 60 * attempt) * 1000;
+        console.warn(
+          `[coingecko] 429 Rate limited — waiting ${waitMs / 1000}s before attempt ${attempt + 1}/${maxAttempts}`
+        );
+        if (attempt < maxAttempts) await new Promise((r) => setTimeout(r, waitMs));
+      } else {
+        // Non-429 error: shorter exponential backoff
+        console.warn(
+          `[coingecko] Attempt ${attempt}/${maxAttempts} failed (${err.message})`
+        );
+        if (attempt < maxAttempts) await new Promise((r) => setTimeout(r, 5000 * attempt));
+      }
+    }
+  }
+  throw lastError;
+}
+
 // ── Scheduled price snapshot (runs server-side at 00:00, 06:00, 12:00, 18:00 UTC) ─
 const SNAPSHOT_INTERVAL_MS = 6 * 60 * 60 * 1000; // 6 hours
 
@@ -108,21 +168,12 @@ async function recordScheduledPriceSnapshot() {
   const ids = [...idSet];
   if (!ids.length) return;
 
-  // Fetch current prices from CoinGecko with retry (2 attempts, 5s backoff)
-  const url =
-    'https://api.coingecko.com/api/v3/simple/price?vs_currencies=usd&ids=' +
-    encodeURIComponent(ids.join(','));
-
+  // Fetch current prices from CoinGecko (with retry + rate-limit handling)
   let priceData;
-  for (let attempt = 1; attempt <= 3; attempt++) {
-    try {
-      const resp = await axios.get(url, { timeout: 15000 });
-      priceData = resp.data;
-      break;
-    } catch (e) {
-      console.warn(`[scheduler] CoinGecko attempt ${attempt}/3 failed: ${e.message}`);
-      if (attempt < 3) await new Promise((r) => setTimeout(r, 5000 * attempt));
-    }
+  try {
+    priceData = await fetchCoinGeckoPrices(ids);
+  } catch (e) {
+    console.error(`[scheduler] CoinGecko fetch failed after all retries: ${e.message}`);
   }
 
   if (!priceData || typeof priceData !== 'object' || priceData.status) {
@@ -208,13 +259,14 @@ app.get('/api/prices', async (req, res) => {
   }
 
   try {
-    const url =
-      'https://api.coingecko.com/api/v3/simple/price?vs_currencies=usd&ids=' +
-      encodeURIComponent(ids.join(','));
-    const response = await axios.get(url, { timeout: 10000 });
-    return res.json(response.data);
+    const data = await fetchCoinGeckoPrices(ids);
+    return res.json(data);
   } catch (err) {
+    const status = err.response?.status;
     console.error('CoinGecko error', err.message);
+    if (status === 429) {
+      return res.status(429).json({ error: 'CoinGecko rate limit exceeded — please retry shortly' });
+    }
     return res.status(502).json({ error: 'Failed to fetch prices from CoinGecko' });
   }
 });
