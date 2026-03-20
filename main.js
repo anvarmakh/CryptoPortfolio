@@ -997,14 +997,25 @@ function renderChart() {
 
   // --- resolve line data source ---
   let lineSnaps = _priceSnapshots; // already sorted ASC
+  const resDays  = { '7d': 7, '30d': 30, '90d': 90 };
   const resHours = { '7d': 6, '30d': 24, '90d': 72 };
+  const windowDays = resDays[_chartResolution] ?? 0;
+  const visibleCutoff = (_chartResolution !== 'all' && windowDays)
+    ? Date.now() - windowDays * 24 * 3_600_000
+    : 0;
   if (lineSnaps.length >= 2 && _chartResolution !== 'all') {
+    // Filter to the selected time window first, then sample
+    if (visibleCutoff) {
+      lineSnaps = lineSnaps.filter((s) => new Date(s.created_at).getTime() >= visibleCutoff);
+    }
     lineSnaps = sampleByInterval(lineSnaps, resHours[_chartResolution] ?? 12);
   }
 
   // Fallback: use step history rows when no price snapshots yet
   const fallback = lineSnaps.length < 2
-    ? [..._historyRows].sort((a, b) => new Date(a.created_at) - new Date(b.created_at))
+    ? [..._historyRows]
+        .sort((a, b) => new Date(a.created_at) - new Date(b.created_at))
+        .filter((s) => new Date(s.created_at).getTime() >= visibleCutoff)
     : null;
   const useSource = lineSnaps.length >= 2 ? lineSnaps : (fallback || []);
 
@@ -1036,13 +1047,14 @@ function renderChart() {
     y: s.invested,
   }));
 
-  // Step markers: non-initial snapshots from history
+  // Step markers: non-initial snapshots from history, filtered to visible window
   const stepData = _historyRows
     .filter((r) => {
       try {
         const m = r.meta ? (typeof r.meta === 'string' ? JSON.parse(r.meta) : r.meta) : null;
-        return !m || m.type !== 'initial';
-      } catch (_) { return true; }
+        if (m && m.type === 'initial') return false;
+      } catch (_) { /* keep */ }
+      return new Date(r.created_at).getTime() >= visibleCutoff;
     })
     .map((r) => ({ x: new Date(r.created_at).getTime(), y: r.portfolio_value }));
 
