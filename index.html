@@ -131,7 +131,7 @@
         <div class="flex items-center justify-between gap-3">
           <div>
             <h2 class="text-sm font-semibold text-slate-200">Suggested trades</h2>
-            <p class="text-[11px] text-slate-500 mt-0.5">Per-asset · weighted by allocation</p>
+            <p class="text-[11px] text-slate-500 mt-0.5">Rebalance to target allocation after step</p>
           </div>
           <button id="addAssetBtn"
                   class="text-[11px] px-2 py-1 rounded-lg border border-slate-700 text-slate-400
@@ -169,7 +169,7 @@
           <!-- Step summary -->
           <div class="border-t border-slate-800 pt-3 space-y-1.5 text-[11px]">
             <div class="flex justify-between font-medium">
-              <span id="stepTotalLabel" class="text-slate-400">Total to invest</span>
+              <span id="stepTotalLabel" class="text-slate-400">Net to invest</span>
               <span id="stepTotalSuggested" class="text-emerald-300">$0</span>
             </div>
             <div class="flex justify-between text-slate-400">
@@ -180,6 +180,11 @@
               <span>Period target</span>
               <span id="stepTargetValue" class="text-slate-200 font-medium">$0</span>
             </div>
+            <div class="flex justify-between text-slate-400">
+              <span>Post-step total</span>
+              <span id="stepEffectiveTarget" class="text-slate-200 font-medium">$0</span>
+            </div>
+            <div id="stepCapNote" class="hidden text-[10px] text-amber-400/80 leading-relaxed"></div>
             <div class="flex justify-between items-baseline text-slate-400">
               <span>Invested after step</span>
               <span class="text-right">
@@ -205,7 +210,8 @@
             ✓ Mark step applied
           </button>
           <p id="stepHint" class="hidden text-[10px] text-slate-600 leading-relaxed">
-            Enter units bought/sold above, then mark step applied.
+            Suggested units are pre-filled (positive = buy, negative = sell). Adjust to match
+            what you actually traded, then mark step applied.
           </p>
           <p id="trackHint" class="hidden text-[10px] text-slate-600 leading-relaxed">
             No snapshots yet. Track current state before applying your first step.

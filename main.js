@@ -176,6 +176,8 @@ function getElements() {
     tradesTableBody: document.getElementById('tradesTableBody'),
     stepCurrentValue: document.getElementById('stepCurrentValue'),
     stepTargetValue: document.getElementById('stepTargetValue'),
+    stepEffectiveTarget: document.getElementById('stepEffectiveTarget'),
+    stepCapNote: document.getElementById('stepCapNote'),
     stepEstimatedInvested: document.getElementById('stepEstimatedInvested'),
     stepEstimatedBreakdown: document.getElementById('stepEstimatedBreakdown'),
     stepTotalLabel: document.getElementById('stepTotalLabel'),
@@ -332,20 +334,29 @@ function renderSummaryAndNextStep() {
   const { currentValue, invested, pnl, pnlPct } = computePnL();
 
   // ── Card 1: Recommended action ─────────────────────────────────
-  const { cappedChange, direction, nextPeriodIndex } = computeStepDetails();
+  const details = computeStepDetails();
+  const trades = computePerAssetTrades(details);
+  const stepKind = classifyStepKind(details, trades);
+  const { cappedChange, nextPeriodIndex } = details;
 
   els.heroPeriod.textContent = String(nextPeriodIndex);
 
-  if (direction === 'Invest') {
+  if (stepKind === 'Invest') {
     els.heroDirectionBadge.textContent = '↑ Invest';
     els.heroDirectionBadge.className = 'text-xs sm:text-sm font-bold text-emerald-300';
     els.heroAmount.textContent = formatUSD(cappedChange);
     els.heroAmount.className = 'text-sm sm:text-xl font-bold tracking-tight text-emerald-300 mt-0.5';
-  } else if (direction === 'Withdraw') {
+  } else if (stepKind === 'Withdraw') {
     els.heroDirectionBadge.textContent = '↓ Withdraw';
     els.heroDirectionBadge.className = 'text-xs sm:text-sm font-bold text-rose-300';
     els.heroAmount.textContent = formatUSD(Math.abs(cappedChange));
     els.heroAmount.className = 'text-sm sm:text-xl font-bold tracking-tight text-rose-300 mt-0.5';
+  } else if (stepKind === 'Rebalance') {
+    const turnover = trades.reduce((s, t) => s + Math.max(t.suggestedValue, 0), 0);
+    els.heroDirectionBadge.textContent = '↻ Rebalance';
+    els.heroDirectionBadge.className = 'text-xs sm:text-sm font-bold text-sky-300';
+    els.heroAmount.textContent = formatUSD(turnover);
+    els.heroAmount.className = 'text-sm sm:text-xl font-bold tracking-tight text-sky-300 mt-0.5';
   } else {
     els.heroDirectionBadge.textContent = '— Hold';
     els.heroDirectionBadge.className = 'text-xs sm:text-sm font-bold text-slate-400';
@@ -400,17 +411,25 @@ function computeStepDetails() {
   const { config } = state;
   const currentValue = computePortfolioValue();
   const nextPeriodIndex = (config.completedPeriods || 0) + 1;
-  const targetValue = config.initialValue + nextPeriodIndex * config.stepPerPeriod;
-  const theoreticalChange = targetValue - currentValue;
+  const periodTarget = config.initialValue + nextPeriodIndex * config.stepPerPeriod;
+  const theoreticalChange = periodTarget - currentValue;
 
   let cappedChange = theoreticalChange;
+  let capBinding = false;
   if (config.maxAddition > 0) {
     if (theoreticalChange > config.maxAddition) {
       cappedChange = config.maxAddition;
+      capBinding = true;
     } else if (theoreticalChange < -config.maxAddition) {
       cappedChange = -config.maxAddition;
+      capBinding = true;
     }
   }
+
+  // effectiveTarget is what the portfolio will actually sum to after the step.
+  // Per-asset trades are computed against this (not the uncapped periodTarget),
+  // so sum(trades) === cappedChange and post-trade allocations exactly match targets.
+  const effectiveTarget = currentValue + cappedChange;
 
   let direction = 'Hold';
   if (cappedChange > 0.5) direction = 'Invest';
@@ -420,13 +439,31 @@ function computeStepDetails() {
 
   return {
     currentValue,
-    targetValue,
+    periodTarget,
+    targetValue: periodTarget,    // alias retained for snapshot meta compatibility
+    effectiveTarget,
     theoreticalChange,
     cappedChange,
+    capBinding,
     direction,
     nextPeriodIndex,
     estimatedInvested,
   };
+}
+
+// Trade significance threshold (USD). Values below this are considered noise
+// and don't count as a "real" trade for classification/rendering purposes.
+const TRADE_EPSILON_USD = 0.5;
+
+function classifyStepKind(stepDetails, trades) {
+  const { cappedChange } = stepDetails;
+  if (cappedChange > TRADE_EPSILON_USD) return 'Invest';
+  if (cappedChange < -TRADE_EPSILON_USD) return 'Withdraw';
+  // cappedChange ≈ 0: either rebalance-only (drift > epsilon) or genuinely on target.
+  const anyDrift = (trades || []).some(
+    (t) => Math.abs(t.suggestedValue) >= TRADE_EPSILON_USD,
+  );
+  return anyDrift ? 'Rebalance' : 'Hold';
 }
 
 function renderStepDetailsAndTrades() {
@@ -462,13 +499,30 @@ function renderStepDetailsAndTrades() {
   }
 
   const details = computeStepDetails();
-  const hasAction = Math.abs(details.cappedChange) >= 0.5;
+  const trades = computePerAssetTrades(details);
+  const stepKind = classifyStepKind(details, trades);
+  const hasAction = stepKind !== 'Hold';
 
   els.tradesEmpty.classList.toggle('hidden', hasAction);
   els.tradesContent.classList.toggle('hidden', !hasAction);
 
   els.stepCurrentValue.textContent = formatUSD(details.currentValue);
-  els.stepTargetValue.textContent = formatUSD(details.targetValue);
+  els.stepTargetValue.textContent = formatUSD(details.periodTarget);
+  if (els.stepEffectiveTarget) {
+    els.stepEffectiveTarget.textContent = formatUSD(details.effectiveTarget);
+  }
+  if (els.stepCapNote) {
+    if (details.capBinding) {
+      const shortfall = details.periodTarget - details.effectiveTarget;
+      const noun = shortfall >= 0 ? 'below' : 'above';
+      els.stepCapNote.textContent =
+        `Max-per-step cap applied — ${formatUSD(Math.abs(shortfall))} ${noun} period target.`;
+      els.stepCapNote.classList.remove('hidden');
+    } else {
+      els.stepCapNote.classList.add('hidden');
+      els.stepCapNote.textContent = '';
+    }
+  }
   els.stepEstimatedInvested.textContent = formatUSD(details.estimatedInvested);
   if (els.stepEstimatedBreakdown) {
     const current = config.investedSoFar || 0;
@@ -479,20 +533,25 @@ function renderStepDetailsAndTrades() {
   }
 
   if (els.stepTotalLabel && els.stepTotalSuggested) {
-    if (details.direction === 'Withdraw') {
-      els.stepTotalLabel.textContent = 'Total to withdraw';
+    if (stepKind === 'Withdraw') {
+      els.stepTotalLabel.textContent = 'Net to withdraw';
       els.stepTotalSuggested.className = 'text-rose-300 font-medium';
+      els.stepTotalSuggested.textContent = formatUSD(Math.abs(details.cappedChange));
+    } else if (stepKind === 'Rebalance') {
+      const turnover = trades.reduce((s, t) => s + Math.max(t.suggestedValue, 0), 0);
+      els.stepTotalLabel.textContent = 'Rebalance turnover';
+      els.stepTotalSuggested.className = 'text-sky-300 font-medium';
+      els.stepTotalSuggested.textContent = formatUSD(turnover);
     } else {
-      els.stepTotalLabel.textContent = 'Total to invest';
+      els.stepTotalLabel.textContent = 'Net to invest';
       els.stepTotalSuggested.className = 'text-emerald-300 font-medium';
+      els.stepTotalSuggested.textContent = formatUSD(Math.abs(details.cappedChange));
     }
-    els.stepTotalSuggested.textContent = formatUSD(Math.abs(details.cappedChange));
   }
 
   if (!hasAction) return;
 
   // ── Per-asset trades table with units-delta entry ──────────────
-  const trades = computePerAssetTrades(details);
   els.tradesTableBody.innerHTML = '';
   const fragment = document.createDocumentFragment();
 
@@ -500,8 +559,8 @@ function renderStepDetailsAndTrades() {
     const tr = document.createElement('tr');
     tr.className = 'hover:bg-slate-800/30';
 
-    const isBuy = t.suggestedValue > 0.5;
-    const isSell = t.suggestedValue < -0.5;
+    const isBuy = t.suggestedValue > TRADE_EPSILON_USD;
+    const isSell = t.suggestedValue < -TRADE_EPSILON_USD;
     const actionBadge = isBuy
       ? '<span class="text-[10px] font-bold text-emerald-300 bg-emerald-500/10 ' +
         'border border-emerald-500/30 rounded px-1.5 py-0.5">BUY</span>'
@@ -511,7 +570,7 @@ function renderStepDetailsAndTrades() {
       : '<span class="text-[10px] text-slate-600">—</span>';
 
     const amountText =
-      Math.abs(t.suggestedValue) >= 0.5
+      Math.abs(t.suggestedValue) >= TRADE_EPSILON_USD
         ? formatUSD(Math.abs(t.suggestedValue))
         : '—';
     const amountClass = isBuy
@@ -520,14 +579,15 @@ function renderStepDetailsAndTrades() {
       ? 'text-rose-300 font-medium'
       : 'text-slate-600';
 
-    // Pre-fill the units-delta input with the suggested units value
+    // Pre-fill the units-delta input with the signed suggested units.
+    // Negative values (SELLs) are preserved — user reviewing an invest period
+    // can still see which overweight assets should be trimmed.
     const suggestedUnitsVal =
       Number.isFinite(t.suggestedUnits) && Math.abs(t.suggestedUnits) >= 1e-8
         ? t.suggestedUnits.toFixed(6)
         : '';
 
-    const postTradeValue = t.currentValue + t.suggestedValue;
-    const targetText = postTradeValue >= 0.005 ? formatUSD(postTradeValue) : '—';
+    const targetText = t.targetValue >= 0.005 ? formatUSD(t.targetValue) : '—';
 
     tr.innerHTML = `
       <td class="py-2 pr-2 text-slate-100 font-medium whitespace-nowrap">${escapeHtml(t.symbol)}</td>
@@ -547,54 +607,40 @@ function renderStepDetailsAndTrades() {
   els.tradesTableBody.appendChild(fragment);
 }
 
+// Per-asset trades under a value-averaging plan.
+//
+// The step's "effective target" (currentValue + cappedChange) is the portfolio
+// total we will actually reach after executing. We split that total across
+// assets by their target allocation %, then each trade is simply
+//     trade_i = allocation_i% × effectiveTarget − currentAssetValue_i
+// This guarantees:
+//   * sum(trade_i)  === cappedChange  (net cash flow matches the step)
+//   * post-trade allocations match targets exactly
+//   * trades can be positive (buy) or negative (sell) — including sells on an
+//     invest period for overweight assets, which is how VA rebalances "for free".
 function computePerAssetTrades(stepDetails) {
-  const { targetValue, cappedChange } = stepDetails;
+  const { effectiveTarget } = stepDetails;
   const { assets } = state;
 
-  const trades = assets.map((a, assetIndex) => {
+  return assets.map((a, assetIndex) => {
     const allocation = Number(a.allocation) || 0;
     const units = Number(a.units) || 0;
     const price = Number(a.price) || 0;
 
-    const targetAssetValue = (allocation / 100) * targetValue;
     const currentAssetValue = units * price;
-    const rawDelta = targetAssetValue - currentAssetValue;
+    const assetTarget = (allocation / 100) * effectiveTarget;
+    const suggestedValue = assetTarget - currentAssetValue;
+    const suggestedUnits = price ? suggestedValue / price : 0;
 
     return {
       assetIndex,
       symbol: a.symbol,
       allocation,
       price,
-      targetValue: targetAssetValue,
       currentValue: currentAssetValue,
-      rawDelta,
-    };
-  });
-
-  if (Math.abs(cappedChange) < 0.5) {
-    return trades.map((t) => ({ ...t, suggestedValue: 0, suggestedUnits: 0 }));
-  }
-
-  const isInvest = cappedChange > 0;
-  const positiveTotal = trades.reduce((sum, t) => {
-    const v = isInvest ? Math.max(t.rawDelta, 0) : Math.max(-t.rawDelta, 0);
-    return sum + v;
-  }, 0);
-
-  if (positiveTotal <= 0) {
-    return trades.map((t) => ({ ...t, suggestedValue: 0, suggestedUnits: 0 }));
-  }
-
-  return trades.map((t) => {
-    const basis = isInvest ? Math.max(t.rawDelta, 0) : Math.max(-t.rawDelta, 0);
-    const weight = basis / positiveTotal;
-    const suggestedAbs = weight * Math.abs(cappedChange);
-    const suggestedValue = isInvest ? suggestedAbs : -suggestedAbs;
-    const suggestedUnits = t.price ? suggestedValue / t.price : 0;
-    return {
-      ...t,
-      suggestedValue,
-      suggestedUnits,
+      targetValue: assetTarget,      // post-trade target value for this asset
+      suggestedValue,                // signed USD (+ buy, − sell)
+      suggestedUnits,                // signed units
     };
   });
 }
