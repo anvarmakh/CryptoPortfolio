@@ -3,6 +3,19 @@
 
 const STORAGE_KEY = 'crypto_value_averaging_state_v1';
 
+// Efficiency-tuning defaults. Rationale lives next to the constants so the
+// values can't drift from their justification.
+// Bands follow the classic 5/25 rule: cuts ~80% of churn trades while
+// preserving allocation discipline. Dust $10 because exchange fees eat
+// smaller trades. Amplifier k=0.5 is a modest counter-cyclical gain
+// (clamps defined in Z_AMPLIFIER_{MIN,MAX}_MULT below). 3 micro-steps
+// spread bi-weekly execution across the window, reducing timing variance.
+const DEFAULT_MIN_TRADE_USD = 10;
+const DEFAULT_ABS_BAND_PP = 5;
+const DEFAULT_REL_BAND_PCT = 25;
+const DEFAULT_AMPLIFIER_K = 0.5;
+const DEFAULT_MICRO_STEPS = 3;
+
 const defaultState = {
   config: {
     initialValue: 0,
@@ -10,21 +23,13 @@ const defaultState = {
     maxAddition: 2000,
     completedPeriods: 0,
     investedSoFar: 0,
-    // Efficiency tuning — default values preserve prior behavior (off).
-    // See README / settings UI for semantics.
-    minTradeSize: 10,         // USD: skip trades with |Δ$| below this
-    rebalanceAbsBand: 0,      // pp: drift |Δ%| within this is "in band"
-    rebalanceRelBand: 0,      // %: relative to target, combined via max()
-    noSellMode: false,        // suppress sells on non-withdraw steps
-    // Counter-cyclical amplifier: scales the theoretical step by how far
-    // current value is from the period target measured in units of recent
-    // portfolio volatility (30-day rolling σ). Below-trend → larger step,
-    // above-trend → smaller step. Clamped to [0.5×, 2×].
-    zAmplifierEnabled: false,
-    zAmplifierK: 0.5,         // sensitivity: 0 = off, typical 0.25–1.0
-    // Micro-stepping: display-only hint to split the period's trades into N
-    // smaller executions spread over the period. Reduces point-in-time risk.
-    microSteps: 1,
+    minTradeSize: DEFAULT_MIN_TRADE_USD,
+    rebalanceAbsBand: DEFAULT_ABS_BAND_PP,
+    rebalanceRelBand: DEFAULT_REL_BAND_PCT,
+    noSellMode: false,
+    zAmplifierEnabled: true,
+    zAmplifierK: DEFAULT_AMPLIFIER_K,
+    microSteps: DEFAULT_MICRO_STEPS,
   },
   assets: [
     {

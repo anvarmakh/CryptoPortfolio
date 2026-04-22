@@ -17,7 +17,7 @@
     .number-input { -moz-appearance: textfield; }
     details > summary { list-style: none; }
     details > summary::-webkit-details-marker { display: none; }
-    details[open] .chevron { transform: rotate(180deg); }
+    details[open] > summary .chevron { transform: rotate(180deg); }
     .chevron { transition: transform 0.2s; }
     #toast { transition: opacity 0.35s; }
   </style>
@@ -431,16 +431,20 @@
         <!-- divider -->
         <div class="border-t border-slate-800"></div>
 
-        <!-- ── SECTION 3: Efficiency tuning ─────────────────────── -->
-        <div class="space-y-4">
-          <div>
-            <h3 class="text-xs font-semibold text-slate-300 uppercase tracking-wider">Efficiency tuning</h3>
-            <p class="text-[11px] text-slate-500 mt-1 leading-relaxed">
-              Optional filters applied on top of the base value-averaging math.
-              They reduce turnover, fees, and tax drag at the cost of slightly
-              less precise rebalancing.
-            </p>
-          </div>
+        <!-- ── SECTION 3: Efficiency tuning ────────────────────── -->
+        <details class="space-y-4">
+          <summary class="cursor-pointer select-none flex items-center justify-between hover:text-slate-200 transition-colors">
+            <div>
+              <h3 class="text-xs font-semibold text-slate-300 uppercase tracking-wider">Efficiency tuning</h3>
+              <p class="text-[11px] text-slate-500 mt-1 leading-relaxed">
+                Pre-tuned defaults for bi-weekly crypto VA. Expand only if you want
+                to override the bands, amplifier, or micro-step behaviour.
+              </p>
+            </div>
+            <svg class="chevron w-4 h-4 text-slate-600 shrink-0 ml-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 9l-7 7-7-7"/>
+            </svg>
+          </summary>
 
           <div class="grid md:grid-cols-2 gap-4">
             <label class="block">
@@ -546,7 +550,7 @@
               </p>
             </label>
           </div>
-        </div>
+        </details>
 
       </div>
     </details>
