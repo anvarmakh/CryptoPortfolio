@@ -10,6 +10,12 @@ const defaultState = {
     maxAddition: 2000,
     completedPeriods: 0,
     investedSoFar: 0,
+    // Efficiency tuning — default values preserve prior behavior (off).
+    // See README / settings UI for semantics.
+    minTradeSize: 10,         // USD: skip trades with |Δ$| below this
+    rebalanceAbsBand: 0,      // pp: drift |Δ%| within this is "in band"
+    rebalanceRelBand: 0,      // %: relative to target, combined via max()
+    noSellMode: false,        // suppress sells on non-withdraw steps
   },
   assets: [
     {
@@ -165,6 +171,10 @@ function getElements() {
     maxAdditionInput: document.getElementById('maxAdditionInput'),
     completedPeriodsInput: document.getElementById('completedPeriodsInput'),
     investedSoFarInput: document.getElementById('investedSoFarInput'),
+    minTradeSizeInput: document.getElementById('minTradeSizeInput'),
+    rebalanceAbsBandInput: document.getElementById('rebalanceAbsBandInput'),
+    rebalanceRelBandInput: document.getElementById('rebalanceRelBandInput'),
+    noSellModeInput: document.getElementById('noSellModeInput'),
 
     // Assets table
     assetsTableBody: document.getElementById('assetsTableBody'),
@@ -178,6 +188,7 @@ function getElements() {
     stepTargetValue: document.getElementById('stepTargetValue'),
     stepEffectiveTarget: document.getElementById('stepEffectiveTarget'),
     stepCapNote: document.getElementById('stepCapNote'),
+    stepFilterNote: document.getElementById('stepFilterNote'),
     stepEstimatedInvested: document.getElementById('stepEstimatedInvested'),
     stepEstimatedBreakdown: document.getElementById('stepEstimatedBreakdown'),
     stepTotalLabel: document.getElementById('stepTotalLabel'),
@@ -212,6 +223,20 @@ function syncConfigInputsFromState() {
   els.maxAdditionInput.value = config.maxAddition || '';
   els.completedPeriodsInput.value = config.completedPeriods || '';
   els.investedSoFarInput.value = config.investedSoFar || '';
+  if (els.minTradeSizeInput) {
+    els.minTradeSizeInput.value = config.minTradeSize != null ? config.minTradeSize : '';
+  }
+  if (els.rebalanceAbsBandInput) {
+    els.rebalanceAbsBandInput.value =
+      config.rebalanceAbsBand != null ? config.rebalanceAbsBand : '';
+  }
+  if (els.rebalanceRelBandInput) {
+    els.rebalanceRelBandInput.value =
+      config.rebalanceRelBand != null ? config.rebalanceRelBand : '';
+  }
+  if (els.noSellModeInput) {
+    els.noSellModeInput.value = config.noSellMode ? 'on' : 'off';
+  }
 }
 
 function syncStateFromConfigInputs() {
@@ -223,6 +248,18 @@ function syncStateFromConfigInputs() {
   const manualInvested = els.investedSoFarInput.value;
   if (manualInvested !== '') {
     cfg.investedSoFar = Math.max(0, Number(manualInvested) || 0);
+  }
+  if (els.minTradeSizeInput) {
+    cfg.minTradeSize = Math.max(0, Number(els.minTradeSizeInput.value) || 0);
+  }
+  if (els.rebalanceAbsBandInput) {
+    cfg.rebalanceAbsBand = Math.max(0, Number(els.rebalanceAbsBandInput.value) || 0);
+  }
+  if (els.rebalanceRelBandInput) {
+    cfg.rebalanceRelBand = Math.max(0, Number(els.rebalanceRelBandInput.value) || 0);
+  }
+  if (els.noSellModeInput) {
+    cfg.noSellMode = els.noSellModeInput.value === 'on';
   }
 }
 
@@ -523,29 +560,50 @@ function renderStepDetailsAndTrades() {
       els.stepCapNote.textContent = '';
     }
   }
-  els.stepEstimatedInvested.textContent = formatUSD(details.estimatedInvested);
+  // Actual net after filters may differ from cappedChange (e.g. dust skipped,
+  // no-sell suppresses drift corrections). Use it for the user-facing numbers.
+  const actualNet = trades.reduce((s, t) => s + t.suggestedValue, 0);
+  const totalBuys = trades.reduce((s, t) => s + Math.max(t.suggestedValue, 0), 0);
+  const filteredCount = trades.filter((t) => t.filters && t.filters.length > 0).length;
+  const filteredUsd = trades.reduce(
+    (s, t) => s + Math.max(Math.abs(t.rawSuggestedValue) - Math.abs(t.suggestedValue), 0),
+    0,
+  );
+
+  els.stepEstimatedInvested.textContent = formatUSD((config.investedSoFar || 0) + actualNet);
   if (els.stepEstimatedBreakdown) {
-    const current = config.investedSoFar || 0;
-    const step = details.cappedChange;
-    const sign = step >= 0 ? '+' : '−';
+    const currentInv = config.investedSoFar || 0;
+    const sign = actualNet >= 0 ? '+' : '−';
     els.stepEstimatedBreakdown.textContent =
-      `${formatUSD(current)} ${sign} ${formatUSD(Math.abs(step))}`;
+      `${formatUSD(currentInv)} ${sign} ${formatUSD(Math.abs(actualNet))}`;
   }
 
   if (els.stepTotalLabel && els.stepTotalSuggested) {
     if (stepKind === 'Withdraw') {
       els.stepTotalLabel.textContent = 'Net to withdraw';
       els.stepTotalSuggested.className = 'text-rose-300 font-medium';
-      els.stepTotalSuggested.textContent = formatUSD(Math.abs(details.cappedChange));
+      els.stepTotalSuggested.textContent = formatUSD(Math.abs(actualNet));
     } else if (stepKind === 'Rebalance') {
-      const turnover = trades.reduce((s, t) => s + Math.max(t.suggestedValue, 0), 0);
       els.stepTotalLabel.textContent = 'Rebalance turnover';
       els.stepTotalSuggested.className = 'text-sky-300 font-medium';
-      els.stepTotalSuggested.textContent = formatUSD(turnover);
+      els.stepTotalSuggested.textContent = formatUSD(totalBuys);
     } else {
       els.stepTotalLabel.textContent = 'Net to invest';
       els.stepTotalSuggested.className = 'text-emerald-300 font-medium';
-      els.stepTotalSuggested.textContent = formatUSD(Math.abs(details.cappedChange));
+      els.stepTotalSuggested.textContent = formatUSD(Math.abs(actualNet));
+    }
+  }
+
+  if (els.stepFilterNote) {
+    if (filteredCount > 0 && filteredUsd >= TRADE_EPSILON_USD) {
+      const plural = filteredCount === 1 ? '' : 's';
+      els.stepFilterNote.textContent =
+        `Filters skipped ${formatUSD(filteredUsd)} across ${filteredCount} asset${plural} ` +
+        `(bands / dust / no-sell). See row badges.`;
+      els.stepFilterNote.classList.remove('hidden');
+    } else {
+      els.stepFilterNote.classList.add('hidden');
+      els.stepFilterNote.textContent = '';
     }
   }
 
@@ -561,13 +619,32 @@ function renderStepDetailsAndTrades() {
 
     const isBuy = t.suggestedValue > TRADE_EPSILON_USD;
     const isSell = t.suggestedValue < -TRADE_EPSILON_USD;
+    const filterBadges = (t.filters || []).map((f) => {
+      const label = f === 'band' ? 'in band' : f === 'dust' ? 'dust' : 'held';
+      const title =
+        f === 'band'
+          ? `Within rebalance band — drift ${(
+              ((t.currentValue / (details.currentValue || 1)) * 100) - t.allocation
+            ).toFixed(1)}pp`
+          : f === 'dust'
+          ? `Below minimum trade size`
+          : `No-sell mode active`;
+      return (
+        `<span class="ml-1 text-[9px] text-slate-500 bg-slate-800/60 border border-slate-700 ` +
+        `rounded px-1 py-0.5" title="${escapeAttr(title)}">${escapeHtml(label)}</span>`
+      );
+    }).join('');
+
     const actionBadge = isBuy
       ? '<span class="text-[10px] font-bold text-emerald-300 bg-emerald-500/10 ' +
         'border border-emerald-500/30 rounded px-1.5 py-0.5">BUY</span>'
       : isSell
       ? '<span class="text-[10px] font-bold text-rose-300 bg-rose-500/10 ' +
         'border border-rose-500/30 rounded px-1.5 py-0.5">SELL</span>'
-      : '<span class="text-[10px] text-slate-600">—</span>';
+      : (t.filters && t.filters.length
+          ? '<span class="text-[10px] font-bold text-slate-500 bg-slate-800/40 ' +
+            'border border-slate-700 rounded px-1.5 py-0.5">HOLD</span>'
+          : '<span class="text-[10px] text-slate-600">—</span>');
 
     const amountText =
       Math.abs(t.suggestedValue) >= TRADE_EPSILON_USD
@@ -590,7 +667,9 @@ function renderStepDetailsAndTrades() {
     const targetText = t.targetValue >= 0.005 ? formatUSD(t.targetValue) : '—';
 
     tr.innerHTML = `
-      <td class="py-2 pr-2 text-slate-100 font-medium whitespace-nowrap">${escapeHtml(t.symbol)}</td>
+      <td class="py-2 pr-2 text-slate-100 font-medium whitespace-nowrap">
+        ${escapeHtml(t.symbol)}${filterBadges}
+      </td>
       <td class="py-2 px-2 text-center whitespace-nowrap">${actionBadge}</td>
       <td class="py-2 px-2 text-right whitespace-nowrap ${amountClass}">${amountText}</td>
       <td class="py-2 px-2 text-right whitespace-nowrap text-slate-400">${targetText}</td>
@@ -609,18 +688,34 @@ function renderStepDetailsAndTrades() {
 
 // Per-asset trades under a value-averaging plan.
 //
-// The step's "effective target" (currentValue + cappedChange) is the portfolio
-// total we will actually reach after executing. We split that total across
-// assets by their target allocation %, then each trade is simply
-//     trade_i = allocation_i% × effectiveTarget − currentAssetValue_i
-// This guarantees:
-//   * sum(trade_i)  === cappedChange  (net cash flow matches the step)
-//   * post-trade allocations match targets exactly
-//   * trades can be positive (buy) or negative (sell) — including sells on an
-//     invest period for overweight assets, which is how VA rebalances "for free".
+// Base formula (canonical multi-asset VA):
+//     tradeᵢ = wᵢ × effectiveTarget − currentAssetValueᵢ
+// where effectiveTarget = currentValue + cappedChange. Sum of trades equals
+// cappedChange, and post-trade allocations land exactly on target.
+//
+// Efficiency filters (applied in order, each may zero or reduce a trade):
+//   1. Rebalance bands — if |drift%| is within the asset's band threshold
+//      (max(absBand, targetPct × relBand/100)), keep only the *deploy* share
+//      (wᵢ × cappedChange) and drop the drift-correction component. This is
+//      the 5/25 rule extended to VA: deploy new cash into target shares, but
+//      don't churn on small drift.
+//   2. No-sell mode — on non-withdraw steps, zero out negative trades.
+//      Edleson's recommended variant: tax-efficient, low IRR penalty.
+//   3. Minimum trade size — trades whose absolute USD size falls below the
+//      configured floor are zeroed out as "dust".
+//
+// Filters break the sum==cappedChange invariant by design (that's the point
+// — fewer, bigger, cleaner trades). The UI surfaces the actual post-filter
+// net cash flow so the user sees what they're really committing to.
 function computePerAssetTrades(stepDetails) {
-  const { effectiveTarget } = stepDetails;
-  const { assets } = state;
+  const { effectiveTarget, currentValue, cappedChange } = stepDetails;
+  const { config, assets } = state;
+
+  const minTrade = Math.max(0, Number(config.minTradeSize) || 0);
+  const absBand = Math.max(0, Number(config.rebalanceAbsBand) || 0);
+  const relBand = Math.max(0, Number(config.rebalanceRelBand) || 0);
+  const noSell = !!config.noSellMode;
+  const isWithdrawStep = cappedChange < -TRADE_EPSILON_USD;
 
   return assets.map((a, assetIndex) => {
     const allocation = Number(a.allocation) || 0;
@@ -628,8 +723,35 @@ function computePerAssetTrades(stepDetails) {
     const price = Number(a.price) || 0;
 
     const currentAssetValue = units * price;
-    const assetTarget = (allocation / 100) * effectiveTarget;
-    const suggestedValue = assetTarget - currentAssetValue;
+    const idealTarget = (allocation / 100) * effectiveTarget;
+    let suggestedValue = idealTarget - currentAssetValue;
+    const rawSuggestedValue = suggestedValue;
+    const filters = [];
+
+    // Drift measured as percentage points of total portfolio.
+    const currentPct = currentValue > 0 ? (currentAssetValue / currentValue) * 100 : 0;
+    const driftPp = currentPct - allocation;
+    const bandThreshold = Math.max(absBand, (allocation * relBand) / 100);
+    const withinBand = bandThreshold > 0 && Math.abs(driftPp) < bandThreshold;
+
+    // (1) Rebalance band: drop the drift-correction component, keep deploy share.
+    if (withinBand) {
+      suggestedValue = (allocation / 100) * cappedChange;
+      filters.push('band');
+    }
+
+    // (2) No-sell: suppress sells on non-withdraw steps.
+    if (noSell && !isWithdrawStep && suggestedValue < 0) {
+      suggestedValue = 0;
+      filters.push('noSell');
+    }
+
+    // (3) Minimum trade size: dust filter (last, so it catches post-band residuals).
+    if (minTrade > 0 && Math.abs(suggestedValue) < minTrade) {
+      suggestedValue = 0;
+      if (Math.abs(rawSuggestedValue) >= TRADE_EPSILON_USD) filters.push('dust');
+    }
+
     const suggestedUnits = price ? suggestedValue / price : 0;
 
     return {
@@ -638,9 +760,13 @@ function computePerAssetTrades(stepDetails) {
       allocation,
       price,
       currentValue: currentAssetValue,
-      targetValue: assetTarget,      // post-trade target value for this asset
-      suggestedValue,                // signed USD (+ buy, − sell)
-      suggestedUnits,                // signed units
+      idealTarget,                             // full VA target (pre-filter)
+      targetValue: currentAssetValue + suggestedValue,  // post-trade value (what user sees)
+      suggestedValue,                          // signed USD (+ buy, − sell)
+      suggestedUnits,                          // signed units
+      rawSuggestedValue,                       // unfiltered trade, for diagnostics
+      withinBand,
+      filters,                                 // e.g. ['band','dust']
     };
   });
 }
@@ -844,6 +970,7 @@ async function createSnapshotFromStep(details) {
           targetValue: details.targetValue,
           theoreticalChange: details.theoreticalChange,
           cappedChange: details.cappedChange,
+          actualNet: Number.isFinite(details.actualNet) ? details.actualNet : details.cappedChange,
         },
         holdings: state.assets.map((a) => ({
           symbol: a.symbol,
@@ -1397,27 +1524,38 @@ function attachEventListeners() {
     const details = computeStepDetails();
     const { config } = state;
 
-    // Read units-delta from the trades table inputs and update asset holdings
+    // Read units-delta from the trades table inputs, update asset holdings, and
+    // sum the actual USD cash flow (priced at fetch-time prices). This is what
+    // went in/out — not details.cappedChange, which may be theoretical when
+    // filters (bands / dust / no-sell) shaved the per-asset trades.
+    let actualNetUsd = 0;
     const deltaInputs = els.tradesTableBody.querySelectorAll('input[data-asset-index]');
     deltaInputs.forEach((input) => {
       const assetIndex = Number(input.getAttribute('data-asset-index'));
       const delta = Number(input.value) || 0;
       if (Number.isInteger(assetIndex) && state.assets[assetIndex]) {
-        const next = (Number(state.assets[assetIndex].units) || 0) + delta;
-        state.assets[assetIndex].units = Math.max(0, next);
+        const asset = state.assets[assetIndex];
+        const price = Number(asset.price) || 0;
+        const next = (Number(asset.units) || 0) + delta;
+        asset.units = Math.max(0, next);
+        actualNetUsd += delta * price;
       }
     });
 
     config.completedPeriods = (config.completedPeriods || 0) + 1;
-    config.investedSoFar = (config.investedSoFar || 0) + details.cappedChange;
+    config.investedSoFar = (config.investedSoFar || 0) + actualNetUsd;
     els.investedSoFarInput.value = config.investedSoFar;
+
+    // Store both the theoretical step and the actually applied net in the
+    // snapshot so history reflects what really happened.
+    const enrichedDetails = { ...details, actualNet: actualNetUsd };
 
     saveState();
     renderAssetsTable();
     renderSummaryAndNextStep();
     renderStepDetailsAndTrades();
 
-    createSnapshotFromStep(details);
+    createSnapshotFromStep(enrichedDetails);
 
     showToast('Step recorded ✓  Holdings updated with entered units.');
   });
@@ -1445,18 +1583,21 @@ function attachEventListeners() {
     fetchPriceSnapshots();
   });
 
-  ['initialValueInput', 'stepInput', 'maxAdditionInput', 'completedPeriodsInput', 'investedSoFarInput'].forEach(
-    (key) => {
-      const input = els[key];
-      if (!input) return;
-      input.addEventListener('change', () => {
-        syncStateFromConfigInputs();
-        saveState();
-        renderSummaryAndNextStep();
-        renderStepDetailsAndTrades();
-      });
-    }
-  );
+  [
+    'initialValueInput', 'stepInput', 'maxAdditionInput',
+    'completedPeriodsInput', 'investedSoFarInput',
+    'minTradeSizeInput', 'rebalanceAbsBandInput', 'rebalanceRelBandInput',
+    'noSellModeInput',
+  ].forEach((key) => {
+    const input = els[key];
+    if (!input) return;
+    input.addEventListener('change', () => {
+      syncStateFromConfigInputs();
+      saveState();
+      renderSummaryAndNextStep();
+      renderStepDetailsAndTrades();
+    });
+  });
 
   const exportCsvBtn = document.getElementById('exportCsvBtn');
   if (exportCsvBtn) {

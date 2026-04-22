@@ -185,6 +185,7 @@
               <span id="stepEffectiveTarget" class="text-slate-200 font-medium">$0</span>
             </div>
             <div id="stepCapNote" class="hidden text-[10px] text-amber-400/80 leading-relaxed"></div>
+            <div id="stepFilterNote" class="hidden text-[10px] text-slate-500 leading-relaxed"></div>
             <div class="flex justify-between items-baseline text-slate-400">
               <span>Invested after step</span>
               <span class="text-right">
@@ -421,6 +422,81 @@
                 How many periods you have already completed.
                 Starts at 0 and auto-increments each time you mark a step applied.
                 Set manually if you are importing an existing plan mid-way.
+              </p>
+            </label>
+          </div>
+        </div>
+
+        <!-- divider -->
+        <div class="border-t border-slate-800"></div>
+
+        <!-- ── SECTION 3: Efficiency tuning ─────────────────────── -->
+        <div class="space-y-4">
+          <div>
+            <h3 class="text-xs font-semibold text-slate-300 uppercase tracking-wider">Efficiency tuning</h3>
+            <p class="text-[11px] text-slate-500 mt-1 leading-relaxed">
+              Optional filters applied on top of the base value-averaging math.
+              They reduce turnover, fees, and tax drag at the cost of slightly
+              less precise rebalancing.
+            </p>
+          </div>
+
+          <div class="grid md:grid-cols-2 gap-4">
+            <label class="block">
+              <span class="text-xs font-medium text-slate-300">Minimum trade size (USD)</span>
+              <input id="minTradeSizeInput" type="number" min="0" step="1"
+                     class="number-input mt-1.5 block w-full rounded-lg border border-slate-700 bg-slate-900
+                            px-3 py-2.5 text-sm text-slate-100 placeholder-slate-600
+                            focus:outline-none focus:ring-2 focus:ring-emerald-500/50 focus:border-emerald-600
+                            transition-colors"
+                     placeholder="e.g. 10" />
+              <p class="mt-1 text-[10px] text-slate-500 leading-relaxed">
+                Dust filter. Trades whose absolute size falls below this are skipped.
+                Set to 0 to disable.
+              </p>
+            </label>
+
+            <label class="block">
+              <span class="text-xs font-medium text-slate-300">No-sell mode</span>
+              <select id="noSellModeInput"
+                      class="number-input mt-1.5 block w-full rounded-lg border border-slate-700 bg-slate-900
+                             px-3 py-2.5 text-sm text-slate-100
+                             focus:outline-none focus:ring-2 focus:ring-emerald-500/50 focus:border-emerald-600
+                             transition-colors">
+                <option value="off">Off — execute both buys and sells</option>
+                <option value="on">On — skip sells on invest / rebalance steps</option>
+              </select>
+              <p class="mt-1 text-[10px] text-slate-500 leading-relaxed">
+                Edleson's recommended variant: hold overweight assets instead of selling.
+                Actual withdraw steps still execute sells as needed.
+              </p>
+            </label>
+
+            <label class="block">
+              <span class="text-xs font-medium text-slate-300">Rebalance band — absolute (pp)</span>
+              <input id="rebalanceAbsBandInput" type="number" min="0" step="0.5"
+                     class="number-input mt-1.5 block w-full rounded-lg border border-slate-700 bg-slate-900
+                            px-3 py-2.5 text-sm text-slate-100 placeholder-slate-600
+                            focus:outline-none focus:ring-2 focus:ring-emerald-500/50 focus:border-emerald-600
+                            transition-colors"
+                     placeholder="e.g. 5" />
+              <p class="mt-1 text-[10px] text-slate-500 leading-relaxed">
+                Skip drift correction while actual allocation is within this many
+                percentage points of target. 0 disables.
+              </p>
+            </label>
+
+            <label class="block">
+              <span class="text-xs font-medium text-slate-300">Rebalance band — relative (%)</span>
+              <input id="rebalanceRelBandInput" type="number" min="0" step="1"
+                     class="number-input mt-1.5 block w-full rounded-lg border border-slate-700 bg-slate-900
+                            px-3 py-2.5 text-sm text-slate-100 placeholder-slate-600
+                            focus:outline-none focus:ring-2 focus:ring-emerald-500/50 focus:border-emerald-600
+                            transition-colors"
+                     placeholder="e.g. 25" />
+              <p class="mt-1 text-[10px] text-slate-500 leading-relaxed">
+                Additional band, proportional to the asset's target. Classic 5/25 rule:
+                set abs=5, rel=25. Effective band per asset is the larger of the two.
               </p>
             </label>
           </div>
