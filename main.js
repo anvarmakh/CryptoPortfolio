@@ -114,13 +114,13 @@ async function syncStateToServer() {
 }
 
 function formatUSD(value) {
-  if (!Number.isFinite(value)) return '$ 0';
+  if (!Number.isFinite(value)) return '$0';
   const opts = {
     style: 'currency',
     currency: 'USD',
     maximumFractionDigits: Math.abs(value) >= 1000 ? 0 : 2,
   };
-  return new Intl.NumberFormat('en-US', opts).format(value).replace('$', '$ ');
+  return new Intl.NumberFormat('en-US', opts).format(value);
 }
 
 function escapeAttr(v) {
@@ -210,13 +210,13 @@ function syncConfigInputsFromState() {
 
 function syncStateFromConfigInputs() {
   const cfg = state.config;
-  cfg.initialValue = Number(els.initialValueInput.value) || 0;
-  cfg.stepPerPeriod = Number(els.stepInput.value) || 0;
-  cfg.maxAddition = Number(els.maxAdditionInput.value) || 0;
-  cfg.completedPeriods = Math.max(0, Number(els.completedPeriodsInput.value) || 0);
+  cfg.initialValue = Math.max(0, Number(els.initialValueInput.value) || 0);
+  cfg.stepPerPeriod = Math.max(0, Number(els.stepInput.value) || 0);
+  cfg.maxAddition = Math.max(0, Number(els.maxAdditionInput.value) || 0);
+  cfg.completedPeriods = Math.max(0, Math.floor(Number(els.completedPeriodsInput.value) || 0));
   const manualInvested = els.investedSoFarInput.value;
   if (manualInvested !== '') {
-    cfg.investedSoFar = Number(manualInvested) || 0;
+    cfg.investedSoFar = Math.max(0, Number(manualInvested) || 0);
   }
 }
 
@@ -363,6 +363,14 @@ function renderSummaryAndNextStep() {
   els.statPnLPct.className =
     'text-[10px] sm:text-xs font-semibold mt-0.5 ' +
     (pnl > 0 ? 'text-emerald-300' : pnl < 0 ? 'text-rose-300' : 'text-slate-400');
+
+  // ── Track-state button is meaningless without prices ───────────
+  if (els.trackCurrentStateBtn) {
+    const ready = !!state.lastPricesFetch;
+    els.trackCurrentStateBtn.disabled = !ready;
+    els.trackCurrentStateBtn.classList.toggle('opacity-50', !ready);
+    els.trackCurrentStateBtn.classList.toggle('cursor-not-allowed', !ready);
+  }
 
   // ── Header timestamp ───────────────────────────────────────────
   if (state.lastPricesFetch) {
@@ -621,8 +629,14 @@ async function fetchPrices() {
   const params = new URLSearchParams();
   params.set('ids', uniqueIds.join(','));
 
+  // Cap how long we wait for the server proxy. The server itself may retry
+  // CoinGecko for several minutes on a 429, so without this the browser tab
+  // can hang indefinitely.
+  const ctrl = new AbortController();
+  const timeoutId = setTimeout(() => ctrl.abort(), 60_000);
+
   try {
-    const res = await fetch(`/api/prices?${params.toString()}`);
+    const res = await fetch(`/api/prices?${params.toString()}`, { signal: ctrl.signal });
     if (!res.ok) {
       throw new Error(`Price API error: ${res.status}`);
     }
@@ -662,10 +676,12 @@ async function fetchPrices() {
     maybeRecordPriceSnapshot();
   } catch (err) {
     console.error(err);
-    els.stepError.textContent =
-      'Failed to fetch prices. Please check your connection or try again in a moment.';
+    els.stepError.textContent = err.name === 'AbortError'
+      ? 'Price fetch timed out. The provider may be rate-limited — please try again shortly.'
+      : 'Failed to fetch prices. Please check your connection or try again in a moment.';
     els.stepError.classList.remove('hidden');
   } finally {
+    clearTimeout(timeoutId);
     btn.textContent = origLabel;
     btn.disabled = false;
   }
@@ -753,7 +769,6 @@ function renderHistory(rows) {
 }
 
 async function createSnapshotFromStep(details) {
-  els.applyStepBtn.disabled = true;
   try {
     const { config } = state;
     const periodIndex = config.completedPeriods || 0;
@@ -820,7 +835,7 @@ async function createInitialSnapshot() {
 
     const payload = {
       createdAt: new Date().toISOString(),
-      periodIndex: 0,
+      periodIndex: Math.max(0, Number(config.completedPeriods) || 0),
       invested,
       portfolioValue,
       pnl,
@@ -882,11 +897,15 @@ function renderAnalytics(rows) {
   const latest = sorted[sorted.length - 1];
   const totalReturnPct = latest.pnl_percent;
 
-  // Best and worst period-over-period portfolio value change
+  // Best and worst period-over-period market gain.
+  // Subtract newly invested cash so the figure reflects price movement only,
+  // not the size of the contribution.
   let bestChange = null;
   let worstChange = null;
   for (let i = 1; i < sorted.length; i++) {
-    const change = sorted[i].portfolio_value - sorted[i - 1].portfolio_value;
+    const valueDelta = sorted[i].portfolio_value - sorted[i - 1].portfolio_value;
+    const investedDelta = sorted[i].invested - sorted[i - 1].invested;
+    const change = valueDelta - investedDelta;
     if (bestChange === null || change > bestChange) bestChange = change;
     if (worstChange === null || change < worstChange) worstChange = change;
   }
@@ -1236,16 +1255,16 @@ function attachEventListeners() {
     if (!asset) return;
 
     if (field === 'symbol') {
-      asset.symbol = String(target.value || '').trim();
+      asset.symbol = String(target.value || '').trim().toUpperCase();
     } else if (field === 'allocation') {
-      asset.allocation = Number(target.value) || 0;
+      asset.allocation = Math.max(0, Number(target.value) || 0);
       const total = state.assets.reduce((s, a) => s + (Number(a.allocation) || 0), 0);
       els.allocationTotal.textContent = `${total.toFixed(1)}%`;
       els.allocationTotal.className =
         'text-xs font-semibold ' +
         (Math.abs(total - 100) < 0.01 ? 'text-emerald-300' : 'text-amber-300');
     } else if (field === 'units' && !_hasHistory) {
-      asset.units = Number(target.value) || 0;
+      asset.units = Math.max(0, Number(target.value) || 0);
       // Surgically update the value cell (cells[4] after ID column removal)
       const tr = target.closest('tr');
       if (tr && tr.cells[4]) {
@@ -1277,12 +1296,18 @@ function attachEventListeners() {
 
   if (els.trackCurrentStateBtn) {
     els.trackCurrentStateBtn.addEventListener('click', () => {
+      if (!state.lastPricesFetch) {
+        showToast('Refresh prices before tracking your baseline.');
+        return;
+      }
       createInitialSnapshot();
     });
   }
 
   els.applyStepBtn.addEventListener('click', () => {
+    if (els.applyStepBtn.disabled) return;
     if (!window.confirm('Mark this step as applied? This will update your holdings and create a snapshot.')) return;
+    els.applyStepBtn.disabled = true;
     const details = computeStepDetails();
     const { config } = state;
 
@@ -1292,8 +1317,8 @@ function attachEventListeners() {
       const assetIndex = Number(input.getAttribute('data-asset-index'));
       const delta = Number(input.value) || 0;
       if (Number.isInteger(assetIndex) && state.assets[assetIndex]) {
-        state.assets[assetIndex].units =
-          (Number(state.assets[assetIndex].units) || 0) + delta;
+        const next = (Number(state.assets[assetIndex].units) || 0) + delta;
+        state.assets[assetIndex].units = Math.max(0, next);
       }
     });
 
@@ -1323,11 +1348,15 @@ function attachEventListeners() {
     renderSummaryAndNextStep();
     renderStepDetailsAndTrades();
     try {
-      await fetch('/api/history', { method: 'DELETE' });
+      await Promise.all([
+        fetch('/api/history', { method: 'DELETE' }),
+        fetch('/api/price-snapshots', { method: 'DELETE' }),
+      ]);
     } catch (err) {
-      console.error('Failed to clear server history during reset', err);
+      console.error('Failed to clear server data during reset', err);
     }
     fetchHistory();
+    fetchPriceSnapshots();
   });
 
   ['initialValueInput', 'stepInput', 'maxAdditionInput', 'completedPeriodsInput', 'investedSoFarInput'].forEach(
@@ -1410,6 +1439,10 @@ function showToast(message, duration = 5000) {
 }
 
 async function init() {
+  // Load ticker→id map BEFORE any price fetch can be triggered (either by the
+  // initial fetchPrices below or by a user clicking Refresh during init).
+  await fetchTickerMap();
+
   syncConfigInputsFromState();
   renderAssetsTable();
   renderSummaryAndNextStep();
@@ -1441,7 +1474,6 @@ async function init() {
     console.warn('Could not load state from server — using local state', e);
   }
 
-  await fetchTickerMap();
   fetchPrices();
   fetchHistory();
   fetchPriceSnapshots();
