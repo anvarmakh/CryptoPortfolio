@@ -2,7 +2,6 @@ const express = require('express');
 const path = require('path');
 const fs = require('fs');
 const cors = require('cors');
-const axios = require('axios');
 
 const app = express();
 const PORT = process.env.PORT || 3000;
@@ -55,7 +54,9 @@ db.exec(`
 // Migrate existing DBs that pre-date the source column
 try {
   db.exec("ALTER TABLE price_snapshots ADD COLUMN source TEXT NOT NULL DEFAULT 'browser'");
-} catch (_) { /* column already exists */ }
+} catch (err) {
+  if (!/duplicate column name/i.test(err.message)) throw err;
+}
 
 // ── Ticker → CoinGecko ID (single source of truth in ticker-map.json) ────────
 const TICKER_TO_COINGECKO_ID = JSON.parse(
@@ -67,138 +68,172 @@ function serverTickerToId(symbol) {
   return TICKER_TO_COINGECKO_ID[upper] || upper.toLowerCase();
 }
 
-// ── In-memory price cache (avoids hammering CoinGecko on repeated requests) ──
+// ── In-memory price cache, keyed per-id so a request for {BTC} doesn't ───────
+// invalidate cached ETH/SOL prices.
 const PRICE_CACHE_TTL_MS = 60 * 1000; // 1 minute
-const priceCache = { data: null, fetchedAt: 0, ids: '' };
+const priceCache = new Map(); // id -> { usd, fetchedAt }
 
-/**
- * Fetch prices from CoinGecko with retry + exponential back-off.
- * Handles 429 Rate-Limit responses by honouring the Retry-After header
- * (or defaulting to a 60 s wait) before retrying.
- *
- * @param {string[]} ids  CoinGecko coin IDs to fetch
- * @param {number}   maxAttempts
- * @returns {Promise<object>}  Raw CoinGecko price map
- */
-async function fetchCoinGeckoPrices(ids, maxAttempts = 4) {
-  const sortedIds = [...ids].sort().join(',');
-
-  // Serve from cache when the same id set was recently fetched
-  if (
-    priceCache.ids === sortedIds &&
-    Date.now() - priceCache.fetchedAt < PRICE_CACHE_TTL_MS
-  ) {
-    return priceCache.data;
-  }
-
+async function fetchFromCoinGecko(ids, maxAttempts) {
   const url =
     'https://api.coingecko.com/api/v3/simple/price?vs_currencies=usd&ids=' +
-    encodeURIComponent(sortedIds);
+    encodeURIComponent(ids.join(','));
 
   let lastError;
   for (let attempt = 1; attempt <= maxAttempts; attempt++) {
+    const ctrl = new AbortController();
+    const timeoutId = setTimeout(() => ctrl.abort(), 15_000);
     try {
-      const resp = await axios.get(url, { timeout: 15000 });
-      // Persist to cache
-      priceCache.data = resp.data;
-      priceCache.fetchedAt = Date.now();
-      priceCache.ids = sortedIds;
-      return resp.data;
+      const resp = await fetch(url, { signal: ctrl.signal });
+      if (!resp.ok) {
+        const err = new Error(`HTTP ${resp.status}`);
+        err.status = resp.status;
+        err.headers = resp.headers;
+        throw err;
+      }
+      return await resp.json();
     } catch (err) {
       lastError = err;
-      const status = err.response?.status;
+      const status = err.status;
       if (status === 429) {
-        // Respect Retry-After if present, otherwise back off 60 s then 120 s …
-        const retryAfter = parseInt(err.response?.headers?.['retry-after'] || '0', 10);
+        const retryAfter = parseInt(err.headers?.get?.('retry-after') || '0', 10);
         const waitMs = (retryAfter > 0 ? retryAfter : 60 * attempt) * 1000;
         console.warn(
           `[coingecko] 429 Rate limited — waiting ${waitMs / 1000}s before attempt ${attempt + 1}/${maxAttempts}`
         );
         if (attempt < maxAttempts) await new Promise((r) => setTimeout(r, waitMs));
       } else {
-        // Non-429 error: shorter exponential backoff
         console.warn(
           `[coingecko] Attempt ${attempt}/${maxAttempts} failed (${err.message})`
         );
         if (attempt < maxAttempts) await new Promise((r) => setTimeout(r, 5000 * attempt));
       }
+    } finally {
+      clearTimeout(timeoutId);
     }
   }
   throw lastError;
 }
 
-// ── Scheduled price snapshot (runs server-side at 00:00, 06:00, 12:00, 18:00 UTC) ─
-const SNAPSHOT_INTERVAL_MS = 6 * 60 * 60 * 1000; // 6 hours
+/**
+ * Fetch prices from CoinGecko with per-id caching. Only stale ids hit the API.
+ *
+ * @param {string[]} ids  CoinGecko coin IDs to fetch
+ * @param {number}   maxAttempts
+ * @returns {Promise<object>}  Normalised `{ id: { usd: number } }` map
+ */
+async function fetchCoinGeckoPrices(ids, maxAttempts = 4) {
+  const now = Date.now();
+  const stale = ids.filter((id) => {
+    const e = priceCache.get(id);
+    return !e || (now - e.fetchedAt) >= PRICE_CACHE_TTL_MS;
+  });
 
-async function recordScheduledPriceSnapshot() {
-  // Skip if the server itself already recorded a snapshot within the last 6 h.
-  // Browser-created snapshots (source='browser') are intentionally ignored here so
-  // the server runs on its own independent clock regardless of user activity.
-  const last = db
-    .prepare("SELECT created_at FROM price_snapshots WHERE source = 'server' ORDER BY datetime(created_at) DESC LIMIT 1")
-    .get();
-  if (last) {
-    const elapsedMs = Date.now() - new Date(last.created_at).getTime();
-    if (elapsedMs < SNAPSHOT_INTERVAL_MS) {
-      const hAgo = (elapsedMs / 3_600_000).toFixed(1);
-      console.log(`[scheduler] Skipping — last snapshot was ${hAgo}h ago`);
-      return;
+  if (stale.length) {
+    const fresh = await fetchFromCoinGecko(stale, maxAttempts);
+    if (fresh && typeof fresh === 'object') {
+      for (const id of Object.keys(fresh)) {
+        const v = fresh[id]?.usd;
+        if (typeof v === 'number' && Number.isFinite(v)) {
+          priceCache.set(id, { usd: v, fetchedAt: now });
+        }
+      }
     }
   }
 
-  // Load assets + invested from persisted app state
-  const stateRow = db.prepare('SELECT state_json FROM app_state WHERE id = 1').get();
-  if (!stateRow) { console.log('[scheduler] No app state saved yet, skipping'); return; }
+  const result = {};
+  for (const id of ids) {
+    const e = priceCache.get(id);
+    if (e) result[id] = { usd: e.usd };
+  }
+  return result;
+}
 
-  let appState;
+// ── Scheduled price snapshot (runs server-side at 00:00, 06:00, 12:00, 18:00 UTC) ─
+const SNAPSHOT_INTERVAL_MS = 6 * 60 * 60 * 1000; // 6 hours
+
+let _schedulerRunning = false;
+
+async function recordScheduledPriceSnapshot() {
+  // Mutex: prevent overlapping runs (e.g. startup catch-up firing while the
+  // aligned timer also fires).
+  if (_schedulerRunning) {
+    console.log('[scheduler] Already running, skipping duplicate invocation');
+    return;
+  }
+  _schedulerRunning = true;
   try {
-    appState = JSON.parse(stateRow.state_json);
-  } catch (e) {
-    console.error('[scheduler] Failed to parse app_state JSON', e.message);
-    return;
+    // Skip if the server itself already recorded a snapshot within the last 6 h.
+    // Browser-created snapshots (source='browser') are intentionally ignored here so
+    // the server runs on its own independent clock regardless of user activity.
+    const last = db
+      .prepare("SELECT created_at FROM price_snapshots WHERE source = 'server' ORDER BY datetime(created_at) DESC LIMIT 1")
+      .get();
+    if (last) {
+      const elapsedMs = Date.now() - new Date(last.created_at).getTime();
+      if (elapsedMs < SNAPSHOT_INTERVAL_MS) {
+        const hAgo = (elapsedMs / 3_600_000).toFixed(1);
+        console.log(`[scheduler] Skipping — last snapshot was ${hAgo}h ago`);
+        return;
+      }
+    }
+
+    // Load assets + invested from persisted app state
+    const stateRow = db.prepare('SELECT state_json FROM app_state WHERE id = 1').get();
+    if (!stateRow) { console.log('[scheduler] No app state saved yet, skipping'); return; }
+
+    let appState;
+    try {
+      appState = JSON.parse(stateRow.state_json);
+    } catch (e) {
+      console.error('[scheduler] Failed to parse app_state JSON', e.message);
+      return;
+    }
+
+    const assets = Array.isArray(appState.assets) ? appState.assets : [];
+    const invested = Number(appState.config?.investedSoFar) || 0;
+    if (!assets.length) { console.log('[scheduler] No assets configured, skipping'); return; }
+
+    // Collect unique CoinGecko IDs
+    const idSet = new Set();
+    assets.forEach((a) => { const id = serverTickerToId(a.symbol); if (id) idSet.add(id); });
+    const ids = [...idSet];
+    if (!ids.length) return;
+
+    // Fetch current prices from CoinGecko (with retry + rate-limit handling)
+    let priceData;
+    try {
+      priceData = await fetchCoinGeckoPrices(ids);
+    } catch (e) {
+      console.error(`[scheduler] CoinGecko fetch failed after all retries: ${e.message}`);
+      return;
+    }
+
+    if (!priceData || typeof priceData !== 'object' || !Object.keys(priceData).length) {
+      console.error('[scheduler] CoinGecko returned no usable prices, skipping snapshot');
+      return;
+    }
+
+    // Compute portfolio value
+    let portfolioValue = 0;
+    for (const a of assets) {
+      const price = priceData[serverTickerToId(a.symbol)]?.usd;
+      const units = Number(a.units) || 0;
+      if (price && units) portfolioValue += price * units;
+    }
+
+    if (portfolioValue <= 0) {
+      console.log('[scheduler] Portfolio value is $0 — no prices resolved, skipping');
+      return;
+    }
+
+    const now = new Date().toISOString();
+    db.prepare(
+      "INSERT INTO price_snapshots (created_at, portfolio_value, invested, source) VALUES (?, ?, ?, 'server')"
+    ).run(now, portfolioValue, invested);
+    console.log(`[scheduler] Price snapshot recorded — portfolio $${portfolioValue.toFixed(2)}, invested $${invested.toFixed(2)}`);
+  } finally {
+    _schedulerRunning = false;
   }
-
-  const assets = Array.isArray(appState.assets) ? appState.assets : [];
-  const invested = Number(appState.config?.investedSoFar) || 0;
-  if (!assets.length) { console.log('[scheduler] No assets configured, skipping'); return; }
-
-  // Collect unique CoinGecko IDs
-  const idSet = new Set();
-  assets.forEach((a) => { const id = serverTickerToId(a.symbol); if (id) idSet.add(id); });
-  const ids = [...idSet];
-  if (!ids.length) return;
-
-  // Fetch current prices from CoinGecko (with retry + rate-limit handling)
-  let priceData;
-  try {
-    priceData = await fetchCoinGeckoPrices(ids);
-  } catch (e) {
-    console.error(`[scheduler] CoinGecko fetch failed after all retries: ${e.message}`);
-  }
-
-  if (!priceData || typeof priceData !== 'object' || priceData.status) {
-    console.error('[scheduler] CoinGecko returned invalid data, skipping snapshot');
-    return;
-  }
-
-  // Compute portfolio value
-  let portfolioValue = 0;
-  for (const a of assets) {
-    const price = priceData[serverTickerToId(a.symbol)]?.usd;
-    const units = Number(a.units) || 0;
-    if (price && units) portfolioValue += price * units;
-  }
-
-  if (portfolioValue <= 0) {
-    console.log('[scheduler] Portfolio value is $0 — no prices resolved, skipping');
-    return;
-  }
-
-  const now = new Date().toISOString();
-  db.prepare(
-    "INSERT INTO price_snapshots (created_at, portfolio_value, invested, source) VALUES (?, ?, ?, 'server')"
-  ).run(now, portfolioValue, invested);
-  console.log(`[scheduler] Price snapshot recorded — portfolio $${portfolioValue.toFixed(2)}, invested $${invested.toFixed(2)}`);
 }
 
 app.use(cors());
@@ -207,11 +242,32 @@ app.use(express.json());
 // Serve only the frontend files; never expose server.js, package.json, or the DB.
 app.get('/', (_req, res) => res.sendFile(path.join(__dirname, 'index.html')));
 app.get('/main.js', (_req, res) => res.sendFile(path.join(__dirname, 'main.js')));
+app.get('/favicon.svg', (_req, res) => res.sendFile(path.join(__dirname, 'favicon.svg')));
 app.get('/ticker-map.json', (_req, res) => res.sendFile(path.join(__dirname, 'ticker-map.json')));
 
-app.get('/health', (req, res) => {
-  res.json({ status: 'ok' });
+app.get('/health', (_req, res) => {
+  try {
+    db.prepare('SELECT 1').get();
+    res.json({ status: 'ok' });
+  } catch (err) {
+    console.error('Health check DB failure:', err.message);
+    res.status(503).json({ status: 'degraded', error: 'database unavailable' });
+  }
 });
+
+// ── Validation helpers ───────────────────────────────────────────────────────
+function isFiniteNumber(v) {
+  return typeof v === 'number' && Number.isFinite(v);
+}
+function isFiniteNonNegative(v) {
+  return isFiniteNumber(v) && v >= 0;
+}
+function isValidStateShape(obj) {
+  if (!obj || typeof obj !== 'object' || Array.isArray(obj)) return false;
+  if (obj.config != null && (typeof obj.config !== 'object' || Array.isArray(obj.config))) return false;
+  if (obj.assets != null && !Array.isArray(obj.assets)) return false;
+  return true;
+}
 
 // App state: persist the full frontend state server-side so it survives
 // across different devices and browsers.
@@ -228,7 +284,7 @@ app.get('/api/state', (req, res) => {
 
 app.put('/api/state', (req, res) => {
   const body = req.body;
-  if (!body || typeof body !== 'object' || Array.isArray(body)) {
+  if (!isValidStateShape(body)) {
     return res.status(400).json({ error: 'Invalid state payload' });
   }
   try {
@@ -262,9 +318,8 @@ app.get('/api/prices', async (req, res) => {
     const data = await fetchCoinGeckoPrices(ids);
     return res.json(data);
   } catch (err) {
-    const status = err.response?.status;
     console.error('CoinGecko error', err.message);
-    if (status === 429) {
+    if (err.status === 429) {
       return res.status(429).json({ error: 'CoinGecko rate limit exceeded — please retry shortly' });
     }
     return res.status(502).json({ error: 'Failed to fetch prices from CoinGecko' });
@@ -299,13 +354,17 @@ app.post('/api/history', (req, res) => {
 
   if (
     typeof createdAt !== 'string' ||
-    typeof periodIndex !== 'number' ||
-    typeof invested !== 'number' ||
-    typeof portfolioValue !== 'number' ||
-    typeof pnl !== 'number' ||
-    typeof pnlPercent !== 'number'
+    !createdAt.length ||
+    !Number.isInteger(periodIndex) || periodIndex < 0 ||
+    !isFiniteNonNegative(invested) ||
+    !isFiniteNonNegative(portfolioValue) ||
+    !isFiniteNumber(pnl) ||
+    !isFiniteNumber(pnlPercent)
   ) {
     return res.status(400).json({ error: 'Invalid snapshot payload' });
+  }
+  if (Number.isNaN(Date.parse(createdAt))) {
+    return res.status(400).json({ error: 'createdAt is not a valid ISO timestamp' });
   }
 
   try {
@@ -337,15 +396,25 @@ app.post('/api/history', (req, res) => {
   }
 });
 
-// Optional: clear all snapshots (for manual reset) — also clears price_snapshots
-app.delete('/api/history', (req, res) => {
+// Clear step-history snapshots only. To wipe the continuous performance chart,
+// call DELETE /api/price-snapshots separately.
+app.delete('/api/history', (_req, res) => {
   try {
     db.prepare('DELETE FROM snapshots').run();
-    db.prepare('DELETE FROM price_snapshots').run();
     res.json({ ok: true });
   } catch (err) {
     console.error('DB error on DELETE /api/history', err.message);
     res.status(500).json({ error: 'Failed to clear history' });
+  }
+});
+
+app.delete('/api/price-snapshots', (_req, res) => {
+  try {
+    db.prepare('DELETE FROM price_snapshots').run();
+    res.json({ ok: true });
+  } catch (err) {
+    console.error('DB error on DELETE /api/price-snapshots', err.message);
+    res.status(500).json({ error: 'Failed to clear price snapshots' });
   }
 });
 
@@ -362,16 +431,30 @@ app.get('/api/price-snapshots', (req, res) => {
   }
 });
 
+// Minimum gap between any two price snapshots, regardless of source.
+// Guards against two browser tabs (or scheduler + browser) inserting at once.
+const PRICE_SNAPSHOT_MIN_GAP_MS = 60_000;
+
 app.post('/api/price-snapshots', (req, res) => {
   const { createdAt, portfolioValue, invested, source } = req.body || {};
   if (
     typeof createdAt !== 'string' ||
-    typeof portfolioValue !== 'number' ||
-    typeof invested !== 'number'
+    !createdAt.length ||
+    !isFiniteNonNegative(portfolioValue) ||
+    !isFiniteNonNegative(invested)
   ) {
     return res.status(400).json({ error: 'Invalid payload' });
   }
+  if (Number.isNaN(Date.parse(createdAt))) {
+    return res.status(400).json({ error: 'createdAt is not a valid ISO timestamp' });
+  }
   try {
+    const last = db
+      .prepare("SELECT created_at FROM price_snapshots ORDER BY datetime(created_at) DESC LIMIT 1")
+      .get();
+    if (last && Date.now() - new Date(last.created_at).getTime() < PRICE_SNAPSHOT_MIN_GAP_MS) {
+      return res.status(429).json({ error: 'Snapshot too soon after previous one' });
+    }
     const info = db.prepare(
       'INSERT INTO price_snapshots (created_at, portfolio_value, invested, source) VALUES (?, ?, ?, ?)'
     ).run(createdAt, portfolioValue, invested, source || 'browser');
