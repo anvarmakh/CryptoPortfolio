@@ -526,7 +526,8 @@ function renderStepDetailsAndTrades() {
         ? t.suggestedUnits.toFixed(6)
         : '';
 
-    const targetText = t.targetValue >= 0.005 ? formatUSD(t.targetValue) : '—';
+    const postTradeValue = t.currentValue + t.suggestedValue;
+    const targetText = postTradeValue >= 0.005 ? formatUSD(postTradeValue) : '—';
 
     tr.innerHTML = `
       <td class="py-2 pr-2 text-slate-100 font-medium whitespace-nowrap">${escapeHtml(t.symbol)}</td>
