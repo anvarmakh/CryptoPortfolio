@@ -526,10 +526,13 @@ function renderStepDetailsAndTrades() {
         ? t.suggestedUnits.toFixed(6)
         : '';
 
+    const targetText = t.targetValue >= 0.005 ? formatUSD(t.targetValue) : '—';
+
     tr.innerHTML = `
       <td class="py-2 pr-2 text-slate-100 font-medium whitespace-nowrap">${escapeHtml(t.symbol)}</td>
       <td class="py-2 px-2 text-center whitespace-nowrap">${actionBadge}</td>
       <td class="py-2 px-2 text-right whitespace-nowrap ${amountClass}">${amountText}</td>
+      <td class="py-2 px-2 text-right whitespace-nowrap text-slate-400">${targetText}</td>
       <td class="py-2 pl-2 text-right whitespace-nowrap">
         <input data-asset-index="${t.assetIndex}" type="number" step="0.00000001"
                class="number-input w-24 rounded-md border border-slate-700 bg-slate-900/80 px-2 py-1 text-xs text-right text-slate-100 focus:outline-none focus:ring-1 focus:ring-emerald-500/70 focus:border-emerald-400"
