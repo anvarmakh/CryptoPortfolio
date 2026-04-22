@@ -17,7 +17,7 @@
     .number-input { -moz-appearance: textfield; }
     details > summary { list-style: none; }
     details > summary::-webkit-details-marker { display: none; }
-    details[open] .chevron { transform: rotate(180deg); }
+    details[open] > summary .chevron { transform: rotate(180deg); }
     .chevron { transition: transform 0.2s; }
     #toast { transition: opacity 0.35s; }
   </style>
@@ -131,7 +131,7 @@
         <div class="flex items-center justify-between gap-3">
           <div>
             <h2 class="text-sm font-semibold text-slate-200">Suggested trades</h2>
-            <p class="text-[11px] text-slate-500 mt-0.5">Per-asset · weighted by allocation</p>
+            <p class="text-[11px] text-slate-500 mt-0.5">Rebalance to target allocation after step</p>
           </div>
           <button id="addAssetBtn"
                   class="text-[11px] px-2 py-1 rounded-lg border border-slate-700 text-slate-400
@@ -169,7 +169,7 @@
           <!-- Step summary -->
           <div class="border-t border-slate-800 pt-3 space-y-1.5 text-[11px]">
             <div class="flex justify-between font-medium">
-              <span id="stepTotalLabel" class="text-slate-400">Total to invest</span>
+              <span id="stepTotalLabel" class="text-slate-400">Net to invest</span>
               <span id="stepTotalSuggested" class="text-emerald-300">$0</span>
             </div>
             <div class="flex justify-between text-slate-400">
@@ -180,6 +180,13 @@
               <span>Period target</span>
               <span id="stepTargetValue" class="text-slate-200 font-medium">$0</span>
             </div>
+            <div class="flex justify-between text-slate-400">
+              <span>Post-step total</span>
+              <span id="stepEffectiveTarget" class="text-slate-200 font-medium">$0</span>
+            </div>
+            <div id="stepCapNote" class="hidden text-[10px] text-amber-400/80 leading-relaxed"></div>
+            <div id="stepFilterNote" class="hidden text-[10px] text-slate-500 leading-relaxed"></div>
+            <div id="stepAmplifierLine" class="hidden text-[10px] text-sky-300/80 leading-relaxed"></div>
             <div class="flex justify-between items-baseline text-slate-400">
               <span>Invested after step</span>
               <span class="text-right">
@@ -205,7 +212,8 @@
             ✓ Mark step applied
           </button>
           <p id="stepHint" class="hidden text-[10px] text-slate-600 leading-relaxed">
-            Enter units bought/sold above, then mark step applied.
+            Suggested units are pre-filled (positive = buy, negative = sell). Adjust to match
+            what you actually traded, then mark step applied.
           </p>
           <p id="trackHint" class="hidden text-[10px] text-slate-600 leading-relaxed">
             No snapshots yet. Track current state before applying your first step.
@@ -419,6 +427,130 @@
             </label>
           </div>
         </div>
+
+        <!-- divider -->
+        <div class="border-t border-slate-800"></div>
+
+        <!-- ── SECTION 3: Efficiency tuning ────────────────────── -->
+        <details class="space-y-4">
+          <summary class="cursor-pointer select-none flex items-center justify-between hover:text-slate-200 transition-colors">
+            <div>
+              <h3 class="text-xs font-semibold text-slate-300 uppercase tracking-wider">Efficiency tuning</h3>
+              <p class="text-[11px] text-slate-500 mt-1 leading-relaxed">
+                Pre-tuned defaults for bi-weekly crypto VA. Expand only if you want
+                to override the bands, amplifier, or micro-step behaviour.
+              </p>
+            </div>
+            <svg class="chevron w-4 h-4 text-slate-600 shrink-0 ml-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 9l-7 7-7-7"/>
+            </svg>
+          </summary>
+
+          <div class="grid md:grid-cols-2 gap-4">
+            <label class="block">
+              <span class="text-xs font-medium text-slate-300">Minimum trade size (USD)</span>
+              <input id="minTradeSizeInput" type="number" min="0" step="1"
+                     class="number-input mt-1.5 block w-full rounded-lg border border-slate-700 bg-slate-900
+                            px-3 py-2.5 text-sm text-slate-100 placeholder-slate-600
+                            focus:outline-none focus:ring-2 focus:ring-emerald-500/50 focus:border-emerald-600
+                            transition-colors"
+                     placeholder="e.g. 10" />
+              <p class="mt-1 text-[10px] text-slate-500 leading-relaxed">
+                Dust filter. Trades whose absolute size falls below this are skipped.
+                Set to 0 to disable.
+              </p>
+            </label>
+
+            <label class="block">
+              <span class="text-xs font-medium text-slate-300">No-sell mode</span>
+              <select id="noSellModeInput"
+                      class="number-input mt-1.5 block w-full rounded-lg border border-slate-700 bg-slate-900
+                             px-3 py-2.5 text-sm text-slate-100
+                             focus:outline-none focus:ring-2 focus:ring-emerald-500/50 focus:border-emerald-600
+                             transition-colors">
+                <option value="off">Off — execute both buys and sells</option>
+                <option value="on">On — skip sells on invest / rebalance steps</option>
+              </select>
+              <p class="mt-1 text-[10px] text-slate-500 leading-relaxed">
+                Edleson's recommended variant: hold overweight assets instead of selling.
+                Actual withdraw steps still execute sells as needed.
+              </p>
+            </label>
+
+            <label class="block">
+              <span class="text-xs font-medium text-slate-300">Rebalance band — absolute (pp)</span>
+              <input id="rebalanceAbsBandInput" type="number" min="0" step="0.5"
+                     class="number-input mt-1.5 block w-full rounded-lg border border-slate-700 bg-slate-900
+                            px-3 py-2.5 text-sm text-slate-100 placeholder-slate-600
+                            focus:outline-none focus:ring-2 focus:ring-emerald-500/50 focus:border-emerald-600
+                            transition-colors"
+                     placeholder="e.g. 5" />
+              <p class="mt-1 text-[10px] text-slate-500 leading-relaxed">
+                Skip drift correction while actual allocation is within this many
+                percentage points of target. 0 disables.
+              </p>
+            </label>
+
+            <label class="block">
+              <span class="text-xs font-medium text-slate-300">Rebalance band — relative (%)</span>
+              <input id="rebalanceRelBandInput" type="number" min="0" step="1"
+                     class="number-input mt-1.5 block w-full rounded-lg border border-slate-700 bg-slate-900
+                            px-3 py-2.5 text-sm text-slate-100 placeholder-slate-600
+                            focus:outline-none focus:ring-2 focus:ring-emerald-500/50 focus:border-emerald-600
+                            transition-colors"
+                     placeholder="e.g. 25" />
+              <p class="mt-1 text-[10px] text-slate-500 leading-relaxed">
+                Additional band, proportional to the asset's target. Classic 5/25 rule:
+                set abs=5, rel=25. Effective band per asset is the larger of the two.
+              </p>
+            </label>
+
+            <label class="block">
+              <span class="text-xs font-medium text-slate-300">Counter-cyclical amplifier</span>
+              <select id="zAmplifierModeInput"
+                      class="number-input mt-1.5 block w-full rounded-lg border border-slate-700 bg-slate-900
+                             px-3 py-2.5 text-sm text-slate-100
+                             focus:outline-none focus:ring-2 focus:ring-emerald-500/50 focus:border-emerald-600
+                             transition-colors">
+                <option value="off">Off — use plain cappedChange</option>
+                <option value="on">On — scale step by z-score of drawdown</option>
+              </select>
+              <p class="mt-1 text-[10px] text-slate-500 leading-relaxed">
+                Scales the step by how far current value is from the period target in
+                units of 30-day portfolio σ. Buys bigger on dips, smaller on rallies.
+                Clamped to ×0.5–×2. Needs ≥3 price snapshots in the last 30 days.
+              </p>
+            </label>
+
+            <label class="block">
+              <span class="text-xs font-medium text-slate-300">Amplifier sensitivity (k)</span>
+              <input id="zAmplifierKInput" type="number" min="0" step="0.1"
+                     class="number-input mt-1.5 block w-full rounded-lg border border-slate-700 bg-slate-900
+                            px-3 py-2.5 text-sm text-slate-100 placeholder-slate-600
+                            focus:outline-none focus:ring-2 focus:ring-emerald-500/50 focus:border-emerald-600
+                            transition-colors"
+                     placeholder="0.5" />
+              <p class="mt-1 text-[10px] text-slate-500 leading-relaxed">
+                Multiplier = clamp(1 − k·z, 0.5, 2.0). Typical: 0.25 (mild) to 1.0 (aggressive).
+                0 disables scaling even when amplifier is on.
+              </p>
+            </label>
+
+            <label class="block">
+              <span class="text-xs font-medium text-slate-300">Micro-steps per period</span>
+              <input id="microStepsInput" type="number" min="1" max="10" step="1"
+                     class="number-input mt-1.5 block w-full rounded-lg border border-slate-700 bg-slate-900
+                            px-3 py-2.5 text-sm text-slate-100 placeholder-slate-600
+                            focus:outline-none focus:ring-2 focus:ring-emerald-500/50 focus:border-emerald-600
+                            transition-colors"
+                     placeholder="1" />
+              <p class="mt-1 text-[10px] text-slate-500 leading-relaxed">
+                Split each suggested trade into N equal sub-trades spread over the period.
+                Reduces point-in-time timing risk. Display-only hint — execute as you like.
+              </p>
+            </label>
+          </div>
+        </details>
 
       </div>
     </details>
