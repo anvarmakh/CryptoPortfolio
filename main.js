@@ -42,6 +42,10 @@ let _priceSnapshots = [];
 // Chart resolution filter: '7d' | '30d' | '90d' | 'all'
 let _chartResolution = '7d';
 
+// Suspend chart renders during initial parallel fetches so we only render once,
+// after both history and price snapshots have loaded.
+let _suspendChartRender = false;
+
 // Chart.js instance (reused; data updated in-place).
 let _chartInstance = null;
 
@@ -940,6 +944,18 @@ function renderAnalytics(rows) {
   }
 }
 
+// Validate a snapshot row has the fields needed for charting: a parseable timestamp
+// and finite numeric portfolio_value + invested. Guards against NaN x-values or
+// corrupted rows crashing Chart.js.
+function isValidSnapshot(row) {
+  if (!row || typeof row !== 'object') return false;
+  const t = new Date(row.created_at).getTime();
+  if (!Number.isFinite(t)) return false;
+  if (!Number.isFinite(Number(row.portfolio_value))) return false;
+  if (!Number.isFinite(Number(row.invested))) return false;
+  return true;
+}
+
 // Return price snapshots sampled at most once per `intervalHours`.
 // Input must already be sorted ASC by created_at.
 function sampleByInterval(snapshots, intervalHours) {
@@ -962,6 +978,11 @@ async function fetchPriceSnapshots() {
     renderChart();
   } catch (err) {
     console.error('Failed to fetch price snapshots', err);
+    if (els.historyError) {
+      els.historyError.textContent =
+        'Failed to load performance chart data. The backend might be unavailable.';
+      els.historyError.classList.remove('hidden');
+    }
   }
 }
 
@@ -1010,84 +1031,91 @@ function fmtTooltipLabel(ms) {
 // Chart uses _priceSnapshots for the continuous lines and _historyRows for step markers.
 // Falls back to _historyRows as line source when price snapshots are not yet available.
 function renderChart() {
+  if (_suspendChartRender) return;
   const chartWrap = document.getElementById('historyChartWrap');
   const canvas = document.getElementById('historyChart');
   if (!chartWrap || !canvas) return;
 
-  // --- resolve line data source ---
-  let lineSnaps = _priceSnapshots; // already sorted ASC
-  const resDays  = { '7d': 7, '30d': 30, '90d': 90 };
-  const resHours = { '7d': 6, '30d': 24, '90d': 72 };
-  const windowDays = resDays[_chartResolution] ?? 0;
-  const visibleCutoff = (_chartResolution !== 'all' && windowDays)
-    ? Date.now() - windowDays * 24 * 3_600_000
-    : 0;
-  if (lineSnaps.length >= 2 && _chartResolution !== 'all') {
-    // Filter to the selected time window first, then sample
-    if (visibleCutoff) {
-      lineSnaps = lineSnaps.filter((s) => new Date(s.created_at).getTime() >= visibleCutoff);
+  try {
+    // Drop rows with malformed timestamps or non-finite numeric fields so a single
+    // bad row cannot break the x-axis or crash Chart.js with NaN coordinates.
+    const validPriceSnaps = _priceSnapshots.filter(isValidSnapshot);
+    const validHistoryRows = _historyRows.filter(isValidSnapshot);
+
+    // --- resolve line data source ---
+    let lineSnaps = validPriceSnaps; // already sorted ASC
+    const resDays  = { '7d': 7, '30d': 30, '90d': 90 };
+    const resHours = { '7d': 6, '30d': 24, '90d': 72 };
+    const windowDays = resDays[_chartResolution] ?? 0;
+    const visibleCutoff = (_chartResolution !== 'all' && windowDays)
+      ? Date.now() - windowDays * 24 * 3_600_000
+      : 0;
+    if (lineSnaps.length >= 2 && _chartResolution !== 'all') {
+      // Filter to the selected time window first, then sample
+      if (visibleCutoff) {
+        lineSnaps = lineSnaps.filter((s) => new Date(s.created_at).getTime() >= visibleCutoff);
+      }
+      lineSnaps = sampleByInterval(lineSnaps, resHours[_chartResolution] ?? 12);
     }
-    lineSnaps = sampleByInterval(lineSnaps, resHours[_chartResolution] ?? 12);
-  }
 
-  // Fallback: use step history rows when no price snapshots yet
-  const fallback = lineSnaps.length < 2
-    ? [..._historyRows]
-        .sort((a, b) => new Date(a.created_at) - new Date(b.created_at))
-        .filter((s) => new Date(s.created_at).getTime() >= visibleCutoff)
-    : null;
-  const useSource = lineSnaps.length >= 2 ? lineSnaps : (fallback || []);
+    // Fallback: use step history rows when no price snapshots yet
+    const fallback = lineSnaps.length < 2
+      ? [...validHistoryRows]
+          .sort((a, b) => new Date(a.created_at) - new Date(b.created_at))
+          .filter((s) => new Date(s.created_at).getTime() >= visibleCutoff)
+      : null;
+    const useSource = lineSnaps.length >= 2 ? lineSnaps : (fallback || []);
 
-  if (useSource.length < 2) {
-    chartWrap.classList.add('hidden');
-    if (_chartInstance) { _chartInstance.destroy(); _chartInstance = null; }
-    return;
-  }
-  chartWrap.classList.remove('hidden');
-
-  // Show data source hint when using fallback
-  const chartSourceHint = document.getElementById('chartSourceHint');
-  if (chartSourceHint) {
-    if (fallback) {
-      chartSourceHint.textContent = 'Showing step history (price snapshots not yet available)';
-      chartSourceHint.classList.remove('hidden');
-    } else {
-      chartSourceHint.classList.add('hidden');
+    if (useSource.length < 2) {
+      chartWrap.classList.add('hidden');
+      if (_chartInstance) { _chartInstance.destroy(); _chartInstance = null; }
+      return;
     }
-  }
+    chartWrap.classList.remove('hidden');
 
-  // Portfolio and invested lines (x = timestamp ms)
-  const portfolioData = useSource.map((s) => ({
-    x: new Date(s.created_at).getTime(),
-    y: s.portfolio_value,
-  }));
-  const investedData = useSource.map((s) => ({
-    x: new Date(s.created_at).getTime(),
-    y: s.invested,
-  }));
+    // Show data source hint when using fallback
+    const chartSourceHint = document.getElementById('chartSourceHint');
+    if (chartSourceHint) {
+      if (fallback) {
+        chartSourceHint.textContent = 'Showing step history (price snapshots not yet available)';
+        chartSourceHint.classList.remove('hidden');
+      } else {
+        chartSourceHint.classList.add('hidden');
+      }
+    }
 
-  // Step markers: non-initial snapshots from history, filtered to visible window
-  const stepData = _historyRows
-    .filter((r) => {
-      try {
-        const m = r.meta ? (typeof r.meta === 'string' ? JSON.parse(r.meta) : r.meta) : null;
-        if (m && m.type === 'initial') return false;
-      } catch (_) { /* keep */ }
-      return new Date(r.created_at).getTime() >= visibleCutoff;
-    })
-    .map((r) => ({ x: new Date(r.created_at).getTime(), y: r.portfolio_value }));
+    // Portfolio and invested lines (x = timestamp ms)
+    const portfolioData = useSource.map((s) => ({
+      x: new Date(s.created_at).getTime(),
+      y: Number(s.portfolio_value),
+    }));
+    const investedData = useSource.map((s) => ({
+      x: new Date(s.created_at).getTime(),
+      y: Number(s.invested),
+    }));
 
-  // Update existing chart in-place
-  if (_chartInstance) {
-    _chartInstance.data.datasets[0].data = portfolioData;
-    _chartInstance.data.datasets[1].data = investedData;
-    _chartInstance.data.datasets[2].data = stepData;
-    _chartInstance.update();
-    return;
-  }
+    // Step markers: non-initial snapshots from history, filtered to visible window
+    const stepData = validHistoryRows
+      .filter((r) => {
+        try {
+          const m = r.meta ? (typeof r.meta === 'string' ? JSON.parse(r.meta) : r.meta) : null;
+          if (m && m.type === 'initial') return false;
+        } catch (_) { /* keep */ }
+        return new Date(r.created_at).getTime() >= visibleCutoff;
+      })
+      .map((r) => ({ x: new Date(r.created_at).getTime(), y: Number(r.portfolio_value) }));
 
-  // Create chart
-  _chartInstance = new Chart(canvas.getContext('2d'), {
+    // Update existing chart in-place
+    if (_chartInstance) {
+      _chartInstance.data.datasets[0].data = portfolioData;
+      _chartInstance.data.datasets[1].data = investedData;
+      _chartInstance.data.datasets[2].data = stepData;
+      _chartInstance.update();
+      return;
+    }
+
+    // Create chart
+    _chartInstance = new Chart(canvas.getContext('2d'), {
     type: 'line',
     data: {
       datasets: [
@@ -1182,6 +1210,14 @@ function renderChart() {
       },
     },
   });
+  } catch (err) {
+    console.error('Failed to render chart', err);
+    chartWrap.classList.add('hidden');
+    if (_chartInstance) {
+      try { _chartInstance.destroy(); } catch (_) {}
+      _chartInstance = null;
+    }
+  }
 }
 
 function exportHistoryCsv() {
@@ -1475,8 +1511,13 @@ async function init() {
   }
 
   fetchPrices();
-  fetchHistory();
-  fetchPriceSnapshots();
+  // Suspend intermediate chart renders until both history and price snapshots
+  // have loaded, then render once with a consistent data set.
+  _suspendChartRender = true;
+  Promise.allSettled([fetchHistory(), fetchPriceSnapshots()]).then(() => {
+    _suspendChartRender = false;
+    renderChart();
+  });
 
   const isFirstRun = !state.config.initialValue && !state.config.stepPerPeriod;
   if (isFirstRun) {
