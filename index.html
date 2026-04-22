@@ -186,6 +186,7 @@
             </div>
             <div id="stepCapNote" class="hidden text-[10px] text-amber-400/80 leading-relaxed"></div>
             <div id="stepFilterNote" class="hidden text-[10px] text-slate-500 leading-relaxed"></div>
+            <div id="stepAmplifierLine" class="hidden text-[10px] text-sky-300/80 leading-relaxed"></div>
             <div class="flex justify-between items-baseline text-slate-400">
               <span>Invested after step</span>
               <span class="text-right">
@@ -497,6 +498,51 @@
               <p class="mt-1 text-[10px] text-slate-500 leading-relaxed">
                 Additional band, proportional to the asset's target. Classic 5/25 rule:
                 set abs=5, rel=25. Effective band per asset is the larger of the two.
+              </p>
+            </label>
+
+            <label class="block">
+              <span class="text-xs font-medium text-slate-300">Counter-cyclical amplifier</span>
+              <select id="zAmplifierModeInput"
+                      class="number-input mt-1.5 block w-full rounded-lg border border-slate-700 bg-slate-900
+                             px-3 py-2.5 text-sm text-slate-100
+                             focus:outline-none focus:ring-2 focus:ring-emerald-500/50 focus:border-emerald-600
+                             transition-colors">
+                <option value="off">Off — use plain cappedChange</option>
+                <option value="on">On — scale step by z-score of drawdown</option>
+              </select>
+              <p class="mt-1 text-[10px] text-slate-500 leading-relaxed">
+                Scales the step by how far current value is from the period target in
+                units of 30-day portfolio σ. Buys bigger on dips, smaller on rallies.
+                Clamped to ×0.5–×2. Needs ≥3 price snapshots in the last 30 days.
+              </p>
+            </label>
+
+            <label class="block">
+              <span class="text-xs font-medium text-slate-300">Amplifier sensitivity (k)</span>
+              <input id="zAmplifierKInput" type="number" min="0" step="0.1"
+                     class="number-input mt-1.5 block w-full rounded-lg border border-slate-700 bg-slate-900
+                            px-3 py-2.5 text-sm text-slate-100 placeholder-slate-600
+                            focus:outline-none focus:ring-2 focus:ring-emerald-500/50 focus:border-emerald-600
+                            transition-colors"
+                     placeholder="0.5" />
+              <p class="mt-1 text-[10px] text-slate-500 leading-relaxed">
+                Multiplier = clamp(1 − k·z, 0.5, 2.0). Typical: 0.25 (mild) to 1.0 (aggressive).
+                0 disables scaling even when amplifier is on.
+              </p>
+            </label>
+
+            <label class="block">
+              <span class="text-xs font-medium text-slate-300">Micro-steps per period</span>
+              <input id="microStepsInput" type="number" min="1" max="10" step="1"
+                     class="number-input mt-1.5 block w-full rounded-lg border border-slate-700 bg-slate-900
+                            px-3 py-2.5 text-sm text-slate-100 placeholder-slate-600
+                            focus:outline-none focus:ring-2 focus:ring-emerald-500/50 focus:border-emerald-600
+                            transition-colors"
+                     placeholder="1" />
+              <p class="mt-1 text-[10px] text-slate-500 leading-relaxed">
+                Split each suggested trade into N equal sub-trades spread over the period.
+                Reduces point-in-time timing risk. Display-only hint — execute as you like.
               </p>
             </label>
           </div>
