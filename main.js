@@ -623,9 +623,9 @@ function renderStepDetailsAndTrades() {
   }
 
   const totalAlloc = assets.reduce((s, a) => s + (Number(a.allocation) || 0), 0);
-  if (Math.abs(totalAlloc - 100) > 0.1) {
+  if (Math.abs(totalAlloc - 100) > 0.01) {
     els.stepError.textContent =
-      `Allocation total is ${totalAlloc.toFixed(1)}% — it must equal exactly 100% for per-asset trade amounts to be correct.`;
+      `Allocation total is ${totalAlloc.toFixed(2)}% — it must equal exactly 100% for per-asset trade amounts to be correct.`;
     els.stepError.classList.remove('hidden');
     els.tradesEmpty.classList.remove('hidden');
     els.tradesContent.classList.add('hidden');
