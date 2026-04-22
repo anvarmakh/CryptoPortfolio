@@ -1657,6 +1657,9 @@ function attachEventListeners() {
     // sum the actual USD cash flow (priced at fetch-time prices). This is what
     // went in/out — not details.cappedChange, which may be theoretical when
     // filters (bands / dust / no-sell) shaved the per-asset trades.
+    // If a user enters an over-sell (delta would take units negative), the
+    // effective delta is clamped — and so is the recorded cash flow, so
+    // investedSoFar stays faithful to what actually changed.
     let actualNetUsd = 0;
     const deltaInputs = els.tradesTableBody.querySelectorAll('input[data-asset-index]');
     deltaInputs.forEach((input) => {
@@ -1665,9 +1668,11 @@ function attachEventListeners() {
       if (Number.isInteger(assetIndex) && state.assets[assetIndex]) {
         const asset = state.assets[assetIndex];
         const price = Number(asset.price) || 0;
-        const next = (Number(asset.units) || 0) + delta;
-        asset.units = Math.max(0, next);
-        actualNetUsd += delta * price;
+        const prevUnits = Number(asset.units) || 0;
+        const nextUnits = Math.max(0, prevUnits + delta);
+        const effectiveDelta = nextUnits - prevUnits;
+        asset.units = nextUnits;
+        actualNetUsd += effectiveDelta * price;
       }
     });
 
