@@ -3,18 +3,12 @@
 
 const STORAGE_KEY = 'crypto_value_averaging_state_v1';
 
-// Efficiency-tuning defaults. Rationale lives next to the constants so the
-// values can't drift from their justification.
-// Bands follow the classic 5/25 rule: cuts ~80% of churn trades while
-// preserving allocation discipline. Dust $10 because exchange fees eat
-// smaller trades. Amplifier k=0.5 is a modest counter-cyclical gain
-// (clamps defined in Z_AMPLIFIER_{MIN,MAX}_MULT below). 3 micro-steps
-// spread bi-weekly execution across the window, reducing timing variance.
+// Efficiency-tuning defaults. Bands follow the classic 5/25 rule: cuts ~80%
+// of churn trades while preserving allocation discipline. Dust $10 because
+// exchange fees eat smaller trades.
 const DEFAULT_MIN_TRADE_USD = 10;
 const DEFAULT_ABS_BAND_PP = 5;
 const DEFAULT_REL_BAND_PCT = 25;
-const DEFAULT_AMPLIFIER_K = 0.5;
-const DEFAULT_MICRO_STEPS = 3;
 
 const defaultState = {
   config: {
@@ -27,9 +21,6 @@ const defaultState = {
     rebalanceAbsBand: DEFAULT_ABS_BAND_PP,
     rebalanceRelBand: DEFAULT_REL_BAND_PCT,
     noSellMode: false,
-    zAmplifierEnabled: true,
-    zAmplifierK: DEFAULT_AMPLIFIER_K,
-    microSteps: DEFAULT_MICRO_STEPS,
   },
   assets: [
     {
@@ -189,12 +180,6 @@ function getElements() {
     rebalanceAbsBandInput: document.getElementById('rebalanceAbsBandInput'),
     rebalanceRelBandInput: document.getElementById('rebalanceRelBandInput'),
     noSellModeInput: document.getElementById('noSellModeInput'),
-    zAmplifierModeInput: document.getElementById('zAmplifierModeInput'),
-    zAmplifierKInput: document.getElementById('zAmplifierKInput'),
-    microStepsInput: document.getElementById('microStepsInput'),
-
-    // Amplifier status line in step summary
-    stepAmplifierLine: document.getElementById('stepAmplifierLine'),
 
     // Assets table
     assetsTableBody: document.getElementById('assetsTableBody'),
@@ -257,15 +242,6 @@ function syncConfigInputsFromState() {
   if (els.noSellModeInput) {
     els.noSellModeInput.value = config.noSellMode ? 'on' : 'off';
   }
-  if (els.zAmplifierModeInput) {
-    els.zAmplifierModeInput.value = config.zAmplifierEnabled ? 'on' : 'off';
-  }
-  if (els.zAmplifierKInput) {
-    els.zAmplifierKInput.value = config.zAmplifierK != null ? config.zAmplifierK : '';
-  }
-  if (els.microStepsInput) {
-    els.microStepsInput.value = config.microSteps != null ? config.microSteps : 1;
-  }
 }
 
 function syncStateFromConfigInputs() {
@@ -289,17 +265,6 @@ function syncStateFromConfigInputs() {
   }
   if (els.noSellModeInput) {
     cfg.noSellMode = els.noSellModeInput.value === 'on';
-  }
-  if (els.zAmplifierModeInput) {
-    cfg.zAmplifierEnabled = els.zAmplifierModeInput.value === 'on';
-  }
-  if (els.zAmplifierKInput) {
-    const raw = Number(els.zAmplifierKInput.value);
-    cfg.zAmplifierK = Number.isFinite(raw) && raw >= 0 ? raw : 0.5;
-  }
-  if (els.microStepsInput) {
-    const raw = Math.floor(Number(els.microStepsInput.value) || 1);
-    cfg.microSteps = Math.max(1, Math.min(10, raw));
   }
 }
 
@@ -484,54 +449,6 @@ function renderSummaryAndNextStep() {
   }
 }
 
-// Sample standard deviation of portfolio_value over the last `windowDays` of
-// recorded price snapshots. Returns { sigma, samples }. Uses portfolio-value
-// levels (not returns) — the amplifier's z-score divides raw USD gaps by
-// raw USD volatility, so the units cancel cleanly without needing a returns
-// model. Insufficient samples → sigma = 0, which disables the amplifier.
-function computePortfolioSigma(windowDays) {
-  const snapshots = Array.isArray(_priceSnapshots) ? _priceSnapshots : [];
-  if (!snapshots.length) return { sigma: 0, samples: 0 };
-  const cutoff = Date.now() - windowDays * 24 * 3_600_000;
-  const values = [];
-  for (const s of snapshots) {
-    const t = new Date(s.created_at).getTime();
-    const v = Number(s.portfolio_value);
-    if (Number.isFinite(t) && Number.isFinite(v) && t >= cutoff) values.push(v);
-  }
-  if (values.length < 3) return { sigma: 0, samples: values.length };
-  const mean = values.reduce((a, b) => a + b, 0) / values.length;
-  const variance =
-    values.reduce((a, v) => a + (v - mean) ** 2, 0) / (values.length - 1);
-  return { sigma: Math.sqrt(variance), samples: values.length };
-}
-
-// Counter-cyclical amplifier. When enabled, scales the raw step size by
-//     multiplier = clamp(1 − k·z, 0.5, 2.0)
-// where z = (currentValue − periodTarget) / σ. Portfolio well below target
-// → z < 0 → multiplier > 1 → larger contribution. Above target → smaller.
-// Degenerates safely (multiplier = 1) on insufficient history.
-const Z_AMPLIFIER_WINDOW_DAYS = 30;
-const Z_AMPLIFIER_MIN_MULT = 0.5;
-const Z_AMPLIFIER_MAX_MULT = 2.0;
-function computeZAmplifier(currentValue, periodTarget, config) {
-  if (!config.zAmplifierEnabled) {
-    return { enabled: false, active: false, multiplier: 1, z: null, sigma: 0, samples: 0, reason: 'disabled' };
-  }
-  const { sigma, samples } = computePortfolioSigma(Z_AMPLIFIER_WINDOW_DAYS);
-  if (!(sigma > 0) || samples < 3) {
-    return { enabled: true, active: false, multiplier: 1, z: null, sigma, samples, reason: 'insufficient-history' };
-  }
-  const k = Number(config.zAmplifierK);
-  if (!Number.isFinite(k) || k <= 0) {
-    return { enabled: true, active: false, multiplier: 1, z: 0, sigma, samples, reason: 'k-zero' };
-  }
-  const z = (currentValue - periodTarget) / sigma;
-  const rawMult = 1 - k * z;
-  const multiplier = Math.max(Z_AMPLIFIER_MIN_MULT, Math.min(Z_AMPLIFIER_MAX_MULT, rawMult));
-  return { enabled: true, active: true, multiplier, z, sigma, samples, reason: null };
-}
-
 function computeStepDetails() {
   const { config } = state;
   const currentValue = computePortfolioValue();
@@ -539,19 +456,13 @@ function computeStepDetails() {
   const periodTarget = config.initialValue + nextPeriodIndex * config.stepPerPeriod;
   const rawChange = periodTarget - currentValue;
 
-  // Amplifier scales the raw step before the max-addition cap is applied.
-  // This preserves the cap's semantics ("max I'll ever deploy per step")
-  // while letting the amplifier shape behavior within that budget.
-  const amplifier = computeZAmplifier(currentValue, periodTarget, config);
-  const amplifiedChange = rawChange * amplifier.multiplier;
-
-  let cappedChange = amplifiedChange;
+  let cappedChange = rawChange;
   let capBinding = false;
   if (config.maxAddition > 0) {
-    if (amplifiedChange > config.maxAddition) {
+    if (rawChange > config.maxAddition) {
       cappedChange = config.maxAddition;
       capBinding = true;
-    } else if (amplifiedChange < -config.maxAddition) {
+    } else if (rawChange < -config.maxAddition) {
       cappedChange = -config.maxAddition;
       capBinding = true;
     }
@@ -574,9 +485,7 @@ function computeStepDetails() {
     targetValue: periodTarget,    // alias retained for snapshot meta compatibility
     effectiveTarget,
     rawChange,
-    theoreticalChange: rawChange, // alias retained for snapshot meta compatibility
-    amplifier,
-    amplifiedChange,
+    theoreticalChange: rawChange,
     cappedChange,
     capBinding,
     direction,
@@ -704,31 +613,6 @@ function renderStepDetailsAndTrades() {
     }
   }
 
-  if (els.stepAmplifierLine) {
-    const amp = details.amplifier;
-    if (!amp || !amp.enabled) {
-      els.stepAmplifierLine.classList.add('hidden');
-      els.stepAmplifierLine.textContent = '';
-    } else if (!amp.active) {
-      const msg =
-        amp.reason === 'insufficient-history'
-          ? `Amplifier: waiting for 30-day history (${amp.samples}/3 samples, need more price snapshots)`
-          : `Amplifier: enabled (k = 0, no scaling)`;
-      els.stepAmplifierLine.textContent = msg;
-      els.stepAmplifierLine.classList.remove('hidden');
-    } else {
-      const zStr = amp.z.toFixed(2);
-      const multStr = amp.multiplier.toFixed(2);
-      const shapedBy = details.amplifiedChange - details.rawChange;
-      const shapedSign = shapedBy >= 0 ? '+' : '−';
-      els.stepAmplifierLine.textContent =
-        `Amplifier: z = ${zStr}σ · mult = ×${multStr} ` +
-        `(σ30d = ${formatUSD(amp.sigma)}, n = ${amp.samples}) ` +
-        `→ shaped step by ${shapedSign}${formatUSD(Math.abs(shapedBy))}`;
-      els.stepAmplifierLine.classList.remove('hidden');
-    }
-  }
-
   if (!hasAction) return;
 
   // ── Per-asset trades table with units-delta entry ──────────────
@@ -768,17 +652,10 @@ function renderStepDetailsAndTrades() {
             'border border-slate-700 rounded px-1.5 py-0.5">HOLD</span>'
           : '<span class="text-[10px] text-slate-600">—</span>');
 
-    const microSteps = Math.max(1, Math.floor(Number(config.microSteps) || 1));
-    const amountMain =
+    const amountText =
       Math.abs(t.suggestedValue) >= TRADE_EPSILON_USD
         ? formatUSD(Math.abs(t.suggestedValue))
         : '—';
-    const microHint =
-      microSteps > 1 && Math.abs(t.suggestedValue) >= TRADE_EPSILON_USD
-        ? `<div class="text-[9px] text-slate-500 font-normal">` +
-          `${microSteps}× ${formatUSD(Math.abs(t.suggestedValue) / microSteps)}</div>`
-        : '';
-    const amountText = `<div>${amountMain}</div>${microHint}`;
     const amountClass = isBuy
       ? 'text-emerald-300 font-medium'
       : isSell
@@ -1721,7 +1598,7 @@ function attachEventListeners() {
     'initialValueInput', 'stepInput', 'maxAdditionInput',
     'completedPeriodsInput', 'investedSoFarInput',
     'minTradeSizeInput', 'rebalanceAbsBandInput', 'rebalanceRelBandInput',
-    'noSellModeInput', 'zAmplifierModeInput', 'zAmplifierKInput', 'microStepsInput',
+    'noSellModeInput',
   ].forEach((key) => {
     const input = els[key];
     if (!input) return;
