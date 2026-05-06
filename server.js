@@ -150,6 +150,9 @@ async function fetchCoinGeckoPrices(ids, maxAttempts = 4) {
 
 // ── Scheduled price snapshot (runs server-side at 00:00, 06:00, 12:00, 18:00 UTC) ─
 const SNAPSHOT_INTERVAL_MS = 6 * 60 * 60 * 1000; // 6 hours
+// If any snapshot (browser or server) lands within this window of a scheduled
+// fire, skip the scheduled one to avoid clustering near-duplicate rows.
+const SCHEDULER_CLUSTER_SUPPRESS_MS = 30 * 60 * 1000; // 30 minutes
 
 let _schedulerRunning = false;
 
@@ -162,17 +165,31 @@ async function recordScheduledPriceSnapshot() {
   }
   _schedulerRunning = true;
   try {
-    // Skip if the server itself already recorded a snapshot within the last 6 h.
-    // Browser-created snapshots (source='browser') are intentionally ignored here so
-    // the server runs on its own independent clock regardless of user activity.
-    const last = db
-      .prepare("SELECT created_at FROM price_snapshots WHERE source = 'server' ORDER BY datetime(created_at) DESC LIMIT 1")
+    // Independent 6h cadence: only count server-source rows so the safety net
+    // keeps firing regardless of user activity.
+    const lastServer = db
+      .prepare("SELECT created_at FROM price_snapshots WHERE source = 'server' ORDER BY id DESC LIMIT 1")
       .get();
-    if (last) {
-      const elapsedMs = Date.now() - new Date(last.created_at).getTime();
+    if (lastServer) {
+      const elapsedMs = Date.now() - new Date(lastServer.created_at).getTime();
       if (elapsedMs < SNAPSHOT_INTERVAL_MS) {
         const hAgo = (elapsedMs / 3_600_000).toFixed(1);
-        console.log(`[scheduler] Skipping — last snapshot was ${hAgo}h ago`);
+        console.log(`[scheduler] Skipping — last server snapshot was ${hAgo}h ago`);
+        return;
+      }
+    }
+
+    // Cluster suppression: if any snapshot (any source) is very recent, skip.
+    // A browser-recorded snapshot from a few minutes ago carries the same data,
+    // so a second row would just be noise on the chart.
+    const lastAny = db
+      .prepare("SELECT created_at, source FROM price_snapshots ORDER BY id DESC LIMIT 1")
+      .get();
+    if (lastAny) {
+      const elapsedMs = Date.now() - new Date(lastAny.created_at).getTime();
+      if (elapsedMs < SCHEDULER_CLUSTER_SUPPRESS_MS) {
+        const mAgo = (elapsedMs / 60_000).toFixed(1);
+        console.log(`[scheduler] Skipping — ${lastAny.source} snapshot recorded ${mAgo}m ago`);
         return;
       }
     }
@@ -436,28 +453,28 @@ app.get('/api/price-snapshots', (req, res) => {
 const PRICE_SNAPSHOT_MIN_GAP_MS = 60_000;
 
 app.post('/api/price-snapshots', (req, res) => {
-  const { createdAt, portfolioValue, invested, source } = req.body || {};
+  const { portfolioValue, invested } = req.body || {};
   if (
-    typeof createdAt !== 'string' ||
-    !createdAt.length ||
     !isFiniteNonNegative(portfolioValue) ||
     !isFiniteNonNegative(invested)
   ) {
     return res.status(400).json({ error: 'Invalid payload' });
   }
-  if (Number.isNaN(Date.parse(createdAt))) {
-    return res.status(400).json({ error: 'createdAt is not a valid ISO timestamp' });
-  }
   try {
+    // Order by id (monotonic) instead of datetime(created_at) so that a skewed
+    // client clock — back when this endpoint trusted client createdAt — cannot
+    // hide a recent row from the gap check.
     const last = db
-      .prepare("SELECT created_at FROM price_snapshots ORDER BY datetime(created_at) DESC LIMIT 1")
+      .prepare('SELECT created_at FROM price_snapshots ORDER BY id DESC LIMIT 1')
       .get();
     if (last && Date.now() - new Date(last.created_at).getTime() < PRICE_SNAPSHOT_MIN_GAP_MS) {
       return res.status(429).json({ error: 'Snapshot too soon after previous one' });
     }
+    // Always stamp server-side so ordering is consistent across clients.
+    const createdAt = new Date().toISOString();
     const info = db.prepare(
-      'INSERT INTO price_snapshots (created_at, portfolio_value, invested, source) VALUES (?, ?, ?, ?)'
-    ).run(createdAt, portfolioValue, invested, source || 'browser');
+      "INSERT INTO price_snapshots (created_at, portfolio_value, invested, source) VALUES (?, ?, ?, 'browser')"
+    ).run(createdAt, portfolioValue, invested);
     const row = db.prepare(
       'SELECT id, created_at, portfolio_value, invested, source FROM price_snapshots WHERE id = ?'
     ).get(info.lastInsertRowid);

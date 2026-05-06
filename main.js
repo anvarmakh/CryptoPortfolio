@@ -49,6 +49,12 @@ let _historyRows = [];
 
 // Periodic price snapshots for the continuous performance chart.
 let _priceSnapshots = [];
+// True once the server's price-snapshot list has been fetched at least once.
+// Guards client-side dedup: if the array is empty due to a failed GET (not a
+// truly empty backend), we must NOT insert blindly.
+let _priceSnapshotsLoaded = false;
+// Re-entrancy guard for in-flight POST /api/price-snapshots.
+let _priceSnapshotInFlight = false;
 
 // Chart resolution filter: '7d' | '30d' | '90d' | 'all'
 let _chartResolution = '7d';
@@ -1158,6 +1164,7 @@ async function fetchPriceSnapshots() {
     const res = await fetch('/api/price-snapshots');
     if (!res.ok) throw new Error(`status ${res.status}`);
     _priceSnapshots = await res.json(); // already ASC from server
+    _priceSnapshotsLoaded = true;
     renderChart();
   } catch (err) {
     console.error('Failed to fetch price snapshots', err);
@@ -1171,6 +1178,11 @@ async function fetchPriceSnapshots() {
 
 // Record a price snapshot at most once per 12 hours after a successful price fetch.
 async function maybeRecordPriceSnapshot() {
+  // Don't insert until we've confirmed the current backend state — otherwise an
+  // empty in-memory array (from a failed GET) would bypass the 12h gate.
+  if (!_priceSnapshotsLoaded) return;
+  if (_priceSnapshotInFlight) return;
+
   const portfolioValue = computePortfolioValue();
   if (portfolioValue <= 0) return;
 
@@ -1180,22 +1192,29 @@ async function maybeRecordPriceSnapshot() {
     if (Date.now() - lastT < MIN_INTERVAL_MS) return;
   }
 
+  _priceSnapshotInFlight = true;
   try {
     const res = await fetch('/api/price-snapshots', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({
-        createdAt: new Date().toISOString(),
         portfolioValue,
         invested: state.config.investedSoFar || 0,
       }),
     });
-    if (!res.ok) throw new Error(`status ${res.status}`);
+    if (!res.ok) {
+      // 429 from the server-side gap check is expected when another snapshot
+      // (e.g. scheduler) just landed — not an error worth logging loudly.
+      if (res.status !== 429) throw new Error(`status ${res.status}`);
+      return;
+    }
     const row = await res.json();
     _priceSnapshots.push(row);
     renderChart();
   } catch (err) {
     console.error('Failed to record price snapshot', err);
+  } finally {
+    _priceSnapshotInFlight = false;
   }
 }
 
