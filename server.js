@@ -149,27 +149,32 @@ async function fetchCoinGeckoPrices(ids, maxAttempts = 4) {
 }
 
 // ── Scheduled price snapshot (runs server-side at 00:00, 06:00, 12:00, 18:00 UTC) ─
-const SNAPSHOT_INTERVAL_MS = 6 * 60 * 60 * 1000; // 6 hours
-// If any snapshot (browser or server) lands within this window of a scheduled
-// fire, skip the scheduled one to avoid clustering near-duplicate rows.
-const SCHEDULER_CLUSTER_SUPPRESS_MS = 30 * 60 * 1000; // 30 minutes
+const SNAPSHOT_INTERVAL_MS = 6 * 60 * 60 * 1000;
+// Suppress a scheduled fire when any snapshot landed within this window — keeps
+// the chart from clustering two near-identical rows minutes apart.
+const SCHEDULER_CLUSTER_SUPPRESS_MS = 30 * 60 * 1000;
+
+// Latest snapshot row (or undefined). Pass a source to filter; omit for any source.
+function latestPriceSnapshot(source) {
+  const sql = source
+    ? "SELECT created_at, source FROM price_snapshots WHERE source = ? ORDER BY id DESC LIMIT 1"
+    : "SELECT created_at, source FROM price_snapshots ORDER BY id DESC LIMIT 1";
+  return source ? db.prepare(sql).get(source) : db.prepare(sql).get();
+}
 
 let _schedulerRunning = false;
 
 async function recordScheduledPriceSnapshot() {
-  // Mutex: prevent overlapping runs (e.g. startup catch-up firing while the
-  // aligned timer also fires).
+  // Prevent overlapping runs (startup catch-up + aligned timer can race).
   if (_schedulerRunning) {
     console.log('[scheduler] Already running, skipping duplicate invocation');
     return;
   }
   _schedulerRunning = true;
   try {
-    // Independent 6h cadence: only count server-source rows so the safety net
-    // keeps firing regardless of user activity.
-    const lastServer = db
-      .prepare("SELECT created_at FROM price_snapshots WHERE source = 'server' ORDER BY id DESC LIMIT 1")
-      .get();
+    // Independent 6h cadence over server-source rows only — the safety net must
+    // keep firing regardless of user activity.
+    const lastServer = latestPriceSnapshot('server');
     if (lastServer) {
       const elapsedMs = Date.now() - new Date(lastServer.created_at).getTime();
       if (elapsedMs < SNAPSHOT_INTERVAL_MS) {
@@ -179,12 +184,7 @@ async function recordScheduledPriceSnapshot() {
       }
     }
 
-    // Cluster suppression: if any snapshot (any source) is very recent, skip.
-    // A browser-recorded snapshot from a few minutes ago carries the same data,
-    // so a second row would just be noise on the chart.
-    const lastAny = db
-      .prepare("SELECT created_at, source FROM price_snapshots ORDER BY id DESC LIMIT 1")
-      .get();
+    const lastAny = latestPriceSnapshot();
     if (lastAny) {
       const elapsedMs = Date.now() - new Date(lastAny.created_at).getTime();
       if (elapsedMs < SCHEDULER_CLUSTER_SUPPRESS_MS) {
@@ -461,16 +461,11 @@ app.post('/api/price-snapshots', (req, res) => {
     return res.status(400).json({ error: 'Invalid payload' });
   }
   try {
-    // Order by id (monotonic) instead of datetime(created_at) so that a skewed
-    // client clock — back when this endpoint trusted client createdAt — cannot
-    // hide a recent row from the gap check.
-    const last = db
-      .prepare('SELECT created_at FROM price_snapshots ORDER BY id DESC LIMIT 1')
-      .get();
+    const last = latestPriceSnapshot();
     if (last && Date.now() - new Date(last.created_at).getTime() < PRICE_SNAPSHOT_MIN_GAP_MS) {
       return res.status(429).json({ error: 'Snapshot too soon after previous one' });
     }
-    // Always stamp server-side so ordering is consistent across clients.
+    // Stamp server-side so chronological ordering can't be broken by client clock skew.
     const createdAt = new Date().toISOString();
     const info = db.prepare(
       "INSERT INTO price_snapshots (created_at, portfolio_value, invested, source) VALUES (?, ?, ?, 'browser')"
