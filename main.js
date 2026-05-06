@@ -48,7 +48,10 @@ let _hasHistory = false;
 let _historyRows = [];
 
 // Periodic price snapshots for the continuous performance chart.
-let _priceSnapshots = [];
+// `null` means "not yet fetched" — distinct from `[]` (fetched, empty backend),
+// so the dedup guard in maybeRecordPriceSnapshot can tell them apart.
+let _priceSnapshots = null;
+let _priceSnapshotInFlight = false;
 
 // Chart resolution filter: '7d' | '30d' | '90d' | 'all'
 let _chartResolution = '7d';
@@ -151,9 +154,10 @@ function escapeHtml(v) {
     .replace(/>/g, '&gt;');
 }
 
-function formatPercent(value) {
+function formatPercent(value, { decimals = 2, signed = false } = {}) {
   if (!Number.isFinite(value)) return '0%';
-  return `${value.toFixed(2)}%`;
+  const sign = signed && value >= 0 ? '+' : '';
+  return `${sign}${value.toFixed(decimals)}%`;
 }
 
 function getElements() {
@@ -1171,6 +1175,8 @@ async function fetchPriceSnapshots() {
 
 // Record a price snapshot at most once per 12 hours after a successful price fetch.
 async function maybeRecordPriceSnapshot() {
+  if (_priceSnapshots === null || _priceSnapshotInFlight) return;
+
   const portfolioValue = computePortfolioValue();
   if (portfolioValue <= 0) return;
 
@@ -1180,22 +1186,28 @@ async function maybeRecordPriceSnapshot() {
     if (Date.now() - lastT < MIN_INTERVAL_MS) return;
   }
 
+  _priceSnapshotInFlight = true;
   try {
     const res = await fetch('/api/price-snapshots', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({
-        createdAt: new Date().toISOString(),
         portfolioValue,
         invested: state.config.investedSoFar || 0,
       }),
     });
-    if (!res.ok) throw new Error(`status ${res.status}`);
+    if (!res.ok) {
+      // 429 is expected when the scheduler (or another tab) just inserted.
+      if (res.status !== 429) throw new Error(`status ${res.status}`);
+      return;
+    }
     const row = await res.json();
     _priceSnapshots.push(row);
     renderChart();
   } catch (err) {
     console.error('Failed to record price snapshot', err);
+  } finally {
+    _priceSnapshotInFlight = false;
   }
 }
 
@@ -1222,7 +1234,7 @@ function renderChart() {
   try {
     // Drop rows with malformed timestamps or non-finite numeric fields so a single
     // bad row cannot break the x-axis or crash Chart.js with NaN coordinates.
-    const validPriceSnaps = _priceSnapshots.filter(isValidSnapshot);
+    const validPriceSnaps = (_priceSnapshots ?? []).filter(isValidSnapshot);
     const validHistoryRows = _historyRows.filter(isValidSnapshot);
 
     // --- resolve line data source ---
@@ -1383,9 +1395,8 @@ function renderChart() {
           callbacks: {
             title: (items) => (items.length ? fmtTooltipLabel(items[0].parsed.x) : ''),
             label: (ctx) => {
-              if (ctx.dataset.label === 'P&L %') {
-                const v = ctx.parsed.y;
-                return `P&L %: ${(v >= 0 ? '+' : '') + v.toFixed(2)}%`;
+              if (ctx.dataset.yAxisID === 'yPct') {
+                return `${ctx.dataset.label}: ${formatPercent(ctx.parsed.y, { signed: true })}`;
               }
               const label = ctx.dataset.label === 'Step applied' ? 'Step' : ctx.dataset.label;
               return `${label}: ${formatUSD(ctx.parsed.y)}`;
@@ -1422,7 +1433,7 @@ function renderChart() {
           ticks: {
             color: '#a78bfa',
             font: { family: "'IBM Plex Sans', sans-serif", size: 10 },
-            callback: (v) => (v >= 0 ? '+' : '') + v.toFixed(0) + '%',
+            callback: (v) => formatPercent(v, { decimals: 0, signed: true }),
             padding: 6,
           },
           grid: { drawOnChartArea: false },
