@@ -1276,6 +1276,14 @@ function renderChart() {
       x: new Date(s.created_at).getTime(),
       y: Number(s.invested),
     }));
+    const pnlPctData = useSource.map((s) => {
+      const inv = Number(s.invested);
+      const val = Number(s.portfolio_value);
+      return {
+        x: new Date(s.created_at).getTime(),
+        y: inv !== 0 ? ((val - inv) / inv) * 100 : 0,
+      };
+    });
 
     // Step markers: non-initial snapshots from history, filtered to visible window
     const stepData = validHistoryRows
@@ -1293,6 +1301,7 @@ function renderChart() {
       _chartInstance.data.datasets[0].data = portfolioData;
       _chartInstance.data.datasets[1].data = investedData;
       _chartInstance.data.datasets[2].data = stepData;
+      _chartInstance.data.datasets[3].data = pnlPctData;
       _chartInstance.update();
       return;
     }
@@ -1339,6 +1348,20 @@ function renderChart() {
           pointHoverRadius: 9,
           order: 1,
         },
+        {
+          label: 'P&L %',
+          data: pnlPctData,
+          borderColor: '#a78bfa',
+          backgroundColor: 'transparent',
+          fill: false,
+          tension: 0.3,
+          borderDash: [2, 3],
+          pointStyle: 'circle',
+          pointRadius: 1.5,
+          pointHoverRadius: 4,
+          yAxisID: 'yPct',
+          order: 4,
+        },
       ],
     },
     options: {
@@ -1360,6 +1383,10 @@ function renderChart() {
           callbacks: {
             title: (items) => (items.length ? fmtTooltipLabel(items[0].parsed.x) : ''),
             label: (ctx) => {
+              if (ctx.dataset.label === 'P&L %') {
+                const v = ctx.parsed.y;
+                return `P&L %: ${(v >= 0 ? '+' : '') + v.toFixed(2)}%`;
+              }
               const label = ctx.dataset.label === 'Step applied' ? 'Step' : ctx.dataset.label;
               return `${label}: ${formatUSD(ctx.parsed.y)}`;
             },
@@ -1388,6 +1415,17 @@ function renderChart() {
             padding: 6,
           },
           grid: { color: 'rgba(30,41,59,0.8)' },
+          border: { color: '#1e293b' },
+        },
+        yPct: {
+          position: 'right',
+          ticks: {
+            color: '#a78bfa',
+            font: { family: "'IBM Plex Sans', sans-serif", size: 10 },
+            callback: (v) => (v >= 0 ? '+' : '') + v.toFixed(0) + '%',
+            padding: 6,
+          },
+          grid: { drawOnChartArea: false },
           border: { color: '#1e293b' },
         },
       },
