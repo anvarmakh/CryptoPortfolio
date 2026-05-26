@@ -598,7 +598,13 @@ function renderStepDetailsAndTrades() {
       els.stepTotalSuggested.className = 'text-sky-300 font-medium';
       els.stepTotalSuggested.textContent = formatUSD(totalBuys);
     } else {
-      els.stepTotalLabel.textContent = 'Net to invest';
+      // In no-sell mode some sells are suppressed, so actualNet is the buy-only
+      // total (which can exceed the step amount). "Net to invest" is misleading
+      // in that case — use "Total to buy" to make clear no netting is happening.
+      const hasSuppressedSells = trades.some(
+        (t) => t.filters && t.filters.includes('noSell'),
+      );
+      els.stepTotalLabel.textContent = hasSuppressedSells ? 'Total to buy' : 'Net to invest';
       els.stepTotalSuggested.className = 'text-emerald-300 font-medium';
       els.stepTotalSuggested.textContent = formatUSD(Math.abs(actualNet));
     }
