@@ -609,7 +609,7 @@ function renderStepDetailsAndTrades() {
       const plural = filteredCount === 1 ? '' : 's';
       els.stepFilterNote.textContent =
         `Filters skipped ${formatUSD(filteredUsd)} across ${filteredCount} asset${plural} ` +
-        `(bands / dust / no-sell). See row badges.`;
+        `(dust / no-sell). See row badges.`;
       els.stepFilterNote.classList.remove('hidden');
     } else {
       els.stepFilterNote.classList.add('hidden');
@@ -630,15 +630,8 @@ function renderStepDetailsAndTrades() {
     const isBuy = t.suggestedValue > TRADE_EPSILON_USD;
     const isSell = t.suggestedValue < -TRADE_EPSILON_USD;
     const filterBadges = (t.filters || []).map((f) => {
-      const label = f === 'band' ? 'in band' : f === 'dust' ? 'dust' : 'held';
-      const title =
-        f === 'band'
-          ? `Within rebalance band — drift ${(
-              ((t.currentValue / (details.currentValue || 1)) * 100) - t.allocation
-            ).toFixed(1)}pp`
-          : f === 'dust'
-          ? `Below minimum trade size`
-          : `No-sell mode active`;
+      const label = f === 'dust' ? 'dust' : 'held';
+      const title = f === 'dust' ? `Below minimum trade size` : `No-sell mode active`;
       return (
         `<span class="ml-1 text-[9px] text-slate-500 bg-slate-800/60 border border-slate-700 ` +
         `rounded px-1 py-0.5" title="${escapeAttr(title)}">${escapeHtml(label)}</span>`
@@ -698,44 +691,28 @@ function renderStepDetailsAndTrades() {
 
 // Per-asset trades under a value-averaging plan.
 //
-// Base formula (canonical multi-asset VA):
-//     tradeᵢ = wᵢ × effectiveTarget − currentAssetValueᵢ
-// where effectiveTarget = currentValue + cappedChange. Sum of trades equals
-// cappedChange, and post-trade allocations land exactly on target.
+// Formula:
+//     tradeᵢ = (wᵢ / 100) × effectiveTarget − currentAssetValueᵢ
+// where effectiveTarget = currentValue + cappedChange.
+// This gives the exact amount to buy/sell so each asset lands on its target
+// portfolio share after the investment step.
 //
-// Efficiency filters:
-//   1. Rebalance bands — if |drift%| is within the asset's band threshold
-//      (max(absBand, targetPct × relBand/100)), drop the asset's drift
-//      correction. Out-of-band assets (including forced exits at 0% target)
-//      keep their canonical trade; the residual cash flow — cappedChange minus
-//      the sum of out-of-band canonical trades — is redeployed across in-band
-//      assets proportional to their weights. This preserves the
-//      sum(trades) == cappedChange invariant in the common case, while still
-//      avoiding churn on small drifts (the 5/25 rule extended to VA).
-//   2. No-sell mode — on non-withdraw steps, zero out negative trades.
-//      Edleson's recommended variant: tax-efficient, low IRR penalty. Applied
-//      to out-of-band sells *before* the redeploy budget is computed so the
-//      suppressed cash isn't phantom-spent on in-band buys.
-//   3. Minimum trade size — trades whose absolute USD size falls below the
-//      configured floor are zeroed out as "dust".
+// Filters (applied in order):
+//   1. No-sell mode — on non-withdraw steps, zero out negative trades.
+//   2. Minimum trade size — trades below the configured floor are zeroed as "dust".
 //
-// The no-sell and dust filters can still break the sum invariant by design
-// (fewer, bigger, cleaner trades). The UI surfaces the actual post-filter net
-// cash flow so the user sees what they're really committing to.
+// Filters can break the sum(trades) == cappedChange invariant by design
+// (fewer, cleaner trades). The UI surfaces the actual post-filter net cash
+// flow so the user sees what they're really committing to.
 function computePerAssetTrades(stepDetails) {
-  const { effectiveTarget, currentValue, cappedChange } = stepDetails;
+  const { effectiveTarget, cappedChange } = stepDetails;
   const { config, assets } = state;
 
   const minTrade = Math.max(0, Number(config.minTradeSize) || 0);
-  const absBand = Math.max(0, Number(config.rebalanceAbsBand) || 0);
-  const relBand = Math.max(0, Number(config.rebalanceRelBand) || 0);
   const noSell = !!config.noSellMode;
   const isWithdrawStep = cappedChange < -TRADE_EPSILON_USD;
 
-  // Pass 1: classify each asset as in-band vs out-of-band, compute canonical
-  // trade, and pre-apply no-sell to out-of-band trades so suppressed sells
-  // don't leak phantom cash into the redeploy budget.
-  const rows = assets.map((a, assetIndex) => {
+  return assets.map((a, assetIndex) => {
     const allocation = Number(a.allocation) || 0;
     const units = Number(a.units) || 0;
     const price = Number(a.price) || 0;
@@ -744,78 +721,35 @@ function computePerAssetTrades(stepDetails) {
     const idealTarget = (allocation / 100) * effectiveTarget;
     const rawSuggestedValue = idealTarget - currentAssetValue;
 
-    const currentPct = currentValue > 0 ? (currentAssetValue / currentValue) * 100 : 0;
-    const driftPp = currentPct - allocation;
-    const bandThreshold = Math.max(absBand, (allocation * relBand) / 100);
-    const withinBand = bandThreshold > 0 && Math.abs(driftPp) < bandThreshold;
-
-    let outOfBandRealized = withinBand ? 0 : rawSuggestedValue;
-    let outOfBandNoSell = false;
-    if (!withinBand && noSell && !isWithdrawStep && outOfBandRealized < 0) {
-      outOfBandRealized = 0;
-      outOfBandNoSell = true;
-    }
-
-    return {
-      assetIndex, asset: a, allocation, price, currentAssetValue,
-      idealTarget, rawSuggestedValue, withinBand,
-      outOfBandRealized, outOfBandNoSell,
-    };
-  });
-
-  // Pass 2: redeploy the residual budget across in-band assets in proportion
-  // to their target weights. Residual = cappedChange − sum of realized
-  // out-of-band trades. When the only "filtering" is the rebalance band, this
-  // preserves sum(trades) == cappedChange and post-step total == effectiveTarget.
-  const outOfBandNet = rows
-    .filter((r) => !r.withinBand)
-    .reduce((s, r) => s + r.outOfBandRealized, 0);
-  const inBandBudget = cappedChange - outOfBandNet;
-  const inBandWeightSum = rows
-    .filter((r) => r.withinBand)
-    .reduce((s, r) => s + r.allocation, 0);
-
-  return rows.map((r) => {
-    let suggestedValue;
+    let suggestedValue = rawSuggestedValue;
     const filters = [];
 
-    if (r.withinBand) {
-      suggestedValue =
-        inBandWeightSum > 0 ? (r.allocation / inBandWeightSum) * inBandBudget : 0;
-      filters.push('band');
-    } else {
-      suggestedValue = r.outOfBandRealized;
-      if (r.outOfBandNoSell) filters.push('noSell');
-    }
-
-    // No-sell may still apply to in-band trades if the residual budget is
-    // negative on a non-withdraw step (rare: out-of-band buys exceed cap).
+    // No-sell mode: on non-withdraw steps, zero out negative trades.
     if (noSell && !isWithdrawStep && suggestedValue < 0) {
       suggestedValue = 0;
-      if (!filters.includes('noSell')) filters.push('noSell');
+      filters.push('noSell');
     }
 
-    // Minimum trade size: dust filter (last, so it catches post-band residuals).
+    // Minimum trade size: dust filter.
     if (minTrade > 0 && Math.abs(suggestedValue) < minTrade) {
       suggestedValue = 0;
-      if (Math.abs(r.rawSuggestedValue) >= TRADE_EPSILON_USD) filters.push('dust');
+      if (Math.abs(rawSuggestedValue) >= TRADE_EPSILON_USD) filters.push('dust');
     }
 
-    const suggestedUnits = r.price ? suggestedValue / r.price : 0;
+    const suggestedUnits = price ? suggestedValue / price : 0;
 
     return {
-      assetIndex: r.assetIndex,
-      symbol: r.asset.symbol,
-      allocation: r.allocation,
-      price: r.price,
-      currentValue: r.currentAssetValue,
-      idealTarget: r.idealTarget,                       // full VA target (pre-filter)
-      targetValue: r.currentAssetValue + suggestedValue, // post-trade value (what user sees)
+      assetIndex,
+      symbol: a.symbol,
+      allocation,
+      price,
+      currentValue: currentAssetValue,
+      idealTarget,                                       // target value at portfolio share
+      targetValue: currentAssetValue + suggestedValue,  // post-trade value (what user sees)
       suggestedValue,                                    // signed USD (+ buy, − sell)
       suggestedUnits,                                    // signed units
-      rawSuggestedValue: r.rawSuggestedValue,            // unfiltered trade, for diagnostics
-      withinBand: r.withinBand,
-      filters,                                           // e.g. ['band','dust']
+      rawSuggestedValue,                                 // unfiltered trade, for diagnostics
+      filters,                                           // e.g. ['dust', 'noSell']
     };
   });
 }
