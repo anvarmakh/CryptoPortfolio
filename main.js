@@ -1408,6 +1408,7 @@ function renderChart() {
       scales: {
         x: {
           type: 'linear',
+          bounds: 'data', // clamp to actual data extent instead of Chart.js's "nice number" overshoot
           ticks: {
             color: '#94a3b8',
             font: { family: "'IBM Plex Sans', sans-serif", size: 10 },
@@ -1419,7 +1420,7 @@ function renderChart() {
           border: { color: '#1e293b' },
         },
         y: {
-          grace: '10%',
+          grace: '18%',
           ticks: {
             color: '#94a3b8',
             font: { family: "'IBM Plex Sans', sans-serif", size: 10 },
@@ -1431,7 +1432,7 @@ function renderChart() {
           border: { color: '#1e293b' },
         },
         yPct: {
-          grace: '10%',
+          grace: '18%',
           position: 'right',
           ticks: {
             color: '#a78bfa',
