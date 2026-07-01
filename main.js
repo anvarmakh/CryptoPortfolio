@@ -1190,16 +1190,34 @@ async function maybeRecordPriceSnapshot() {
   }
 }
 
+// Chart timestamps are always shown in Tashkent time, independent of the viewer's
+// browser timezone, so the axis/tooltip stay consistent for every user.
+const TASHKENT_TZ = 'Asia/Tashkent';
+const _tashkentPartsFormatter = new Intl.DateTimeFormat('en-GB', {
+  timeZone: TASHKENT_TZ,
+  day: 'numeric',
+  month: 'numeric',
+  hour: '2-digit',
+  minute: '2-digit',
+  hourCycle: 'h23',
+});
+
+function tashkentParts(ms) {
+  const parts = {};
+  for (const p of _tashkentPartsFormatter.formatToParts(new Date(ms))) {
+    parts[p.type] = p.value;
+  }
+  return parts;
+}
+
 function fmtAxisLabel(ms) {
-  const d = new Date(ms);
-  return `${d.getDate()}/${d.getMonth() + 1}`;
+  const { day, month } = tashkentParts(ms);
+  return `${day}/${month}`;
 }
 
 function fmtTooltipLabel(ms) {
-  const d = new Date(ms);
-  const hh = String(d.getHours()).padStart(2, '0');
-  const mm = String(d.getMinutes()).padStart(2, '0');
-  return `${d.getDate()}/${d.getMonth() + 1} ${hh}:${mm}`;
+  const { day, month, hour, minute } = tashkentParts(ms);
+  return `${day}/${month} ${hour}:${minute} (Tashkent)`;
 }
 
 // Chart uses _priceSnapshots for the continuous lines and _historyRows for step markers.
@@ -1219,17 +1237,23 @@ function renderChart() {
     // --- resolve line data source ---
     let lineSnaps = validPriceSnaps; // already sorted ASC
     const resDays  = { '7d': 7, '30d': 30, '90d': 90 };
-    const resHours = { '7d': 6, '30d': 24, '90d': 72 };
     const windowDays = resDays[_chartResolution] ?? 0;
     const visibleCutoff = (_chartResolution !== 'all' && windowDays)
       ? Date.now() - windowDays * 24 * 3_600_000
       : 0;
-    if (lineSnaps.length >= 2 && _chartResolution !== 'all') {
-      // Filter to the selected time window first, then sample
-      if (visibleCutoff) {
-        lineSnaps = lineSnaps.filter((s) => new Date(s.created_at).getTime() >= visibleCutoff);
-      }
-      lineSnaps = sampleByInterval(lineSnaps, resHours[_chartResolution] ?? 12);
+    if (visibleCutoff) {
+      lineSnaps = lineSnaps.filter((s) => new Date(s.created_at).getTime() >= visibleCutoff);
+    }
+    // Sample every range (including 'all') down to a consistent target point count so
+    // marker/line density doesn't jump around when switching resolutions — the interval
+    // is derived from the visible span rather than hardcoded per range.
+    if (lineSnaps.length >= 2) {
+      const spanMs = new Date(lineSnaps[lineSnaps.length - 1].created_at).getTime()
+        - new Date(lineSnaps[0].created_at).getTime();
+      const TARGET_POINTS = 60;
+      const MIN_SAMPLE_INTERVAL_HOURS = 6; // matches server snapshot cadence — no point sampling finer than that
+      const intervalHours = Math.max(spanMs / 3_600_000 / TARGET_POINTS, MIN_SAMPLE_INTERVAL_HOURS);
+      lineSnaps = sampleByInterval(lineSnaps, intervalHours);
     }
 
     // Fallback: use step history rows when no price snapshots yet
@@ -1395,6 +1419,7 @@ function renderChart() {
           border: { color: '#1e293b' },
         },
         y: {
+          grace: '10%',
           ticks: {
             color: '#94a3b8',
             font: { family: "'IBM Plex Sans', sans-serif", size: 10 },
@@ -1406,6 +1431,7 @@ function renderChart() {
           border: { color: '#1e293b' },
         },
         yPct: {
+          grace: '10%',
           position: 'right',
           ticks: {
             color: '#a78bfa',
