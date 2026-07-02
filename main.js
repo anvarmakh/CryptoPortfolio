@@ -576,7 +576,9 @@ function renderStepDetailsAndTrades() {
   const totalBuys = trades.reduce((s, t) => s + Math.max(t.suggestedValue, 0), 0);
   const filteredCount = trades.filter((t) => t.filters && t.filters.length > 0).length;
   const filteredUsd = trades.reduce(
-    (s, t) => s + Math.max(Math.abs(t.rawSuggestedValue) - Math.abs(t.suggestedValue), 0),
+    (s, t) => s + (t.filters && t.filters.length
+      ? Math.max(Math.abs(t.rawSuggestedValue) - Math.abs(t.suggestedValue), 0)
+      : 0),
     0,
   );
 
@@ -704,7 +706,11 @@ function renderStepDetailsAndTrades() {
 // portfolio share after the investment step.
 //
 // Filters (applied in order):
-//   1. No-sell mode — on non-withdraw steps, zero out negative trades.
+//   1. No-sell mode — on non-withdraw steps, zero out negative trades, then
+//      scale buys down so their total fits the actual cash available
+//      (cappedChange). Without this, suppressed sale proceeds would
+//      otherwise be silently replaced by extra "invisible" cash, so total
+//      buys would exceed the max-per-step cap by the suppressed-sell amount.
 //   2. Minimum trade size — trades below the configured floor are zeroed as "dust".
 //
 // Filters can break the sum(trades) == cappedChange invariant by design
@@ -718,7 +724,7 @@ function computePerAssetTrades(stepDetails) {
   const noSell = !!config.noSellMode;
   const isWithdrawStep = cappedChange < -TRADE_EPSILON_USD;
 
-  return assets.map((a, assetIndex) => {
+  const draft = assets.map((a, assetIndex) => {
     const allocation = Number(a.allocation) || 0;
     const units = Number(a.units) || 0;
     const price = Number(a.price) || 0;
@@ -736,6 +742,40 @@ function computePerAssetTrades(stepDetails) {
       filters.push('noSell');
     }
 
+    return {
+      assetIndex,
+      symbol: a.symbol,
+      allocation,
+      price,
+      currentAssetValue,
+      idealTarget,
+      rawSuggestedValue,
+      suggestedValue,
+      filters,
+    };
+  });
+
+  // Buys were sized assuming the suppressed sells would fund them. With
+  // those sells skipped, the only real cash for buys is cappedChange —
+  // scale buys down proportionally to fit that budget instead of
+  // overspending by the suppressed-sell amount.
+  if (noSell && !isWithdrawStep) {
+    const totalBuysRaw = draft.reduce((s, t) => s + Math.max(t.suggestedValue, 0), 0);
+    if (totalBuysRaw > TRADE_EPSILON_USD) {
+      const scale = cappedChange > 0 ? Math.min(1, cappedChange / totalBuysRaw) : 0;
+      if (scale < 1) {
+        draft.forEach((t) => {
+          if (t.suggestedValue > 0) t.suggestedValue *= scale;
+        });
+      }
+    }
+  }
+
+  return draft.map((t) => {
+    const { assetIndex, symbol, allocation, price, currentAssetValue, idealTarget, rawSuggestedValue } = t;
+    let suggestedValue = t.suggestedValue;
+    const filters = t.filters.slice();
+
     // Minimum trade size: dust filter.
     if (minTrade > 0 && Math.abs(suggestedValue) < minTrade) {
       suggestedValue = 0;
@@ -746,7 +786,7 @@ function computePerAssetTrades(stepDetails) {
 
     return {
       assetIndex,
-      symbol: a.symbol,
+      symbol,
       allocation,
       price,
       currentValue: currentAssetValue,
