@@ -324,11 +324,15 @@ function renderAssetsTable() {
                   value="${escapeAttr(asset.units ?? '')}" />
          </td>`;
 
-    // Avg cost: editable only before history (bootstraps the starting cost basis);
-    // afterwards it's derived automatically from buys in "Mark step applied" and shown as text.
+    // Avg cost: once a cost basis has been established (either bootstrapped or
+    // derived from a buy), it's locked and shown as text — the same "locked once
+    // there's something to protect" rule as units. But if it's still unset (null/0,
+    // e.g. a position that predates this feature, or one just fully exited), it
+    // stays editable regardless of history so it can be bootstrapped at any time.
     const avgCostNum = Number(asset.avgCost) || 0;
     const avgCostDisplay = avgCostNum ? formatUSD(avgCostNum) : '–';
-    const avgCostCell = unitsLocked
+    const avgCostLocked = unitsLocked && avgCostNum > 0;
+    const avgCostCell = avgCostLocked
       ? `<td class="py-2 px-2 text-right text-slate-400 text-xs whitespace-nowrap hidden sm:table-cell cursor-help" title="Average cost updates automatically from buys after &quot;Mark step applied&quot;.">${avgCostDisplay}</td>`
       : `<td class="py-2 px-2 text-right whitespace-nowrap hidden sm:table-cell">
            <input data-index="${index}" data-field="avgCost" type="number" step="0.00000001"
@@ -1622,7 +1626,11 @@ function attachEventListeners() {
       if (tr && tr.cells[6]) {
         tr.cells[6].innerHTML = computeUnrealizedInnerHtml(asset);
       }
-    } else if (field === 'avgCost' && !_hasHistory) {
+    } else if (field === 'avgCost') {
+      // No `!_hasHistory` guard here (unlike units above): this input only exists in
+      // the DOM when avgCostLocked was false at render time, and re-checking the live
+      // asset.avgCost value here would lock the field after the very first keystroke
+      // (since typing a nonzero digit makes it look "established" mid-edit).
       asset.avgCost = Math.max(0, Number(target.value) || 0);
       const tr = target.closest('tr');
       if (tr && tr.cells[6]) {
