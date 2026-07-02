@@ -28,12 +28,14 @@ const defaultState = {
       allocation: 60,
       units: 0,
       price: 0,
+      avgCost: 0,
     },
     {
       symbol: 'ETH',
       allocation: 40,
       units: 0,
       price: 0,
+      avgCost: 0,
     },
   ],
   lastPricesFetch: null,
@@ -322,6 +324,18 @@ function renderAssetsTable() {
                   value="${escapeAttr(asset.units ?? '')}" />
          </td>`;
 
+    // Avg cost: editable only before history (bootstraps the starting cost basis);
+    // afterwards it's derived automatically from buys in "Mark step applied" and shown as text.
+    const avgCostNum = Number(asset.avgCost) || 0;
+    const avgCostDisplay = avgCostNum ? formatUSD(avgCostNum) : '–';
+    const avgCostCell = unitsLocked
+      ? `<td class="py-2 px-2 text-right text-slate-400 text-xs whitespace-nowrap hidden sm:table-cell cursor-help" title="Average cost updates automatically from buys after &quot;Mark step applied&quot;.">${avgCostDisplay}</td>`
+      : `<td class="py-2 px-2 text-right whitespace-nowrap hidden sm:table-cell">
+           <input data-index="${index}" data-field="avgCost" type="number" step="0.00000001"
+                  class="number-input w-24 rounded-md border border-slate-700 bg-slate-900/80 px-2 py-1 text-xs text-right text-slate-100 focus:outline-none focus:ring-1 focus:ring-emerald-500/70 focus:border-emerald-400"
+                  value="${escapeAttr(asset.avgCost ?? '')}" placeholder="0.00" />
+         </td>`;
+
     tr.innerHTML = `
       ${tickerCell}
       <td class="py-2 px-2 text-right whitespace-nowrap">
@@ -330,6 +344,7 @@ function renderAssetsTable() {
                value="${escapeAttr(asset.allocation ?? '')}" />
       </td>
       ${unitsCell}
+      ${avgCostCell}
       <td class="py-2 px-2 text-right whitespace-nowrap ${asset.price ? 'text-slate-200' : (state.lastPricesFetch ? 'text-amber-400' : 'text-slate-500')}">
         ${asset.price
           ? formatUSD(asset.price)
@@ -338,6 +353,7 @@ function renderAssetsTable() {
       <td class="py-2 px-2 text-right text-slate-200 whitespace-nowrap">
         ${asset.price && asset.units ? formatUSD(asset.price * asset.units) : '–'}
       </td>
+      <td class="py-2 px-2 text-right whitespace-nowrap hidden md:table-cell">${computeUnrealizedInnerHtml(asset)}</td>
       ${currentPctCell}
       <td class="py-2 pl-2 text-right whitespace-nowrap">
         <button data-index="${index}" data-action="remove-asset"
@@ -358,6 +374,22 @@ function renderAssetsTable() {
   els.allocationTotal.className =
     'text-xs font-semibold ' +
     (Math.abs(totalAllocation - 100) < 0.01 ? 'text-emerald-300' : 'text-amber-300');
+}
+
+// Inner HTML (no <td> wrapper) for an asset's unrealized P&L, derived from its
+// average cost basis. Shared by renderAssetsTable and the surgical cell updates
+// in the units/avgCost input handlers so both stay in sync without a full re-render.
+function computeUnrealizedInnerHtml(asset) {
+  const avgCostNum = Number(asset.avgCost) || 0;
+  const unitsNum = Number(asset.units) || 0;
+  const price = Number(asset.price) || 0;
+  if (!(avgCostNum > 0 && unitsNum > 0 && price)) return '–';
+
+  const unrealized = (price - avgCostNum) * unitsNum;
+  const unrealizedPct = ((price - avgCostNum) / avgCostNum) * 100;
+  const color = unrealized > 0 ? 'text-emerald-300' : unrealized < 0 ? 'text-rose-300' : 'text-slate-200';
+  return `<span class="${color} font-medium">${unrealized >= 0 ? '+' : ''}${formatUSD(unrealized)}</span>
+    <span class="text-[10px] text-slate-500 ml-1">${formatPercent(unrealizedPct, { signed: true })}</span>`;
 }
 
 function computePortfolioValue() {
@@ -1006,6 +1038,7 @@ async function createSnapshotFromStep(details) {
           allocation: a.allocation,
           units: a.units,
           price: a.price,
+          avgCost: a.avgCost,
         })),
       },
     };
@@ -1057,6 +1090,7 @@ async function createInitialSnapshot() {
           allocation: a.allocation,
           units: a.units,
           price: a.price,
+          avgCost: a.avgCost,
         })),
       },
     };
@@ -1550,6 +1584,7 @@ function attachEventListeners() {
       allocation: 0,
       units: 0,
       price: 0,
+      avgCost: 0,
     });
     saveState();
     renderAssetsTable();
@@ -1577,11 +1612,21 @@ function attachEventListeners() {
         (Math.abs(total - 100) < 0.01 ? 'text-emerald-300' : 'text-amber-300');
     } else if (field === 'units' && !_hasHistory) {
       asset.units = Math.max(0, Number(target.value) || 0);
-      // Surgically update the value cell (cells[4] after ID column removal)
+      // Surgically update the value cell and unrealized-P&L cell so we don't
+      // lose input focus/cursor position from a full renderAssetsTable() re-render.
       const tr = target.closest('tr');
-      if (tr && tr.cells[4]) {
-        tr.cells[4].textContent =
+      if (tr && tr.cells[5]) {
+        tr.cells[5].textContent =
           asset.price && asset.units ? formatUSD(asset.price * asset.units) : '–';
+      }
+      if (tr && tr.cells[6]) {
+        tr.cells[6].innerHTML = computeUnrealizedInnerHtml(asset);
+      }
+    } else if (field === 'avgCost' && !_hasHistory) {
+      asset.avgCost = Math.max(0, Number(target.value) || 0);
+      const tr = target.closest('tr');
+      if (tr && tr.cells[6]) {
+        tr.cells[6].innerHTML = computeUnrealizedInnerHtml(asset);
       }
     }
 
@@ -1641,6 +1686,20 @@ function attachEventListeners() {
         const prevUnits = Number(asset.units) || 0;
         const nextUnits = Math.max(0, prevUnits + delta);
         const effectiveDelta = nextUnits - prevUnits;
+
+        // Average cost basis: a buy extends it as a weighted average of the prior
+        // position and the new lot (priced at the fetch-time price, same price used
+        // for actualNetUsd below, so the two stay consistent with each other). A sell
+        // leaves avgCost untouched — it only reduces units and realizes gain/loss;
+        // fully exiting the position resets the cost basis for the next entry.
+        if (effectiveDelta > 0) {
+          const prevAvgCost = Number(asset.avgCost) || 0;
+          const prevCostBasis = prevAvgCost * prevUnits;
+          asset.avgCost = (prevCostBasis + effectiveDelta * price) / nextUnits;
+        } else if (nextUnits === 0) {
+          asset.avgCost = 0;
+        }
+
         asset.units = nextUnits;
         actualNetUsd += effectiveDelta * price;
       }
