@@ -150,8 +150,8 @@
         </div>
 
         <!-- Active trades -->
-        <div id="tradesContent" class="hidden space-y-4">
-          <div class="overflow-x-auto">
+        <div id="tradesContent" class="hidden space-y-4 lg:space-y-0 lg:flex lg:items-start lg:gap-5">
+          <div class="overflow-x-auto lg:flex-1">
             <table class="w-full text-xs align-middle">
               <thead>
                 <tr class="border-b border-slate-800 text-slate-500 text-[10px] uppercase tracking-wider">
@@ -169,7 +169,8 @@
           </div>
 
           <!-- Step summary -->
-          <div class="border-t border-slate-800 pt-3 space-y-1.5 text-[11px]">
+          <div class="border-t border-slate-800 pt-3 space-y-1.5 text-[11px]
+                      lg:w-64 lg:shrink-0 lg:border-t-0 lg:border-l lg:pt-0 lg:pl-5">
             <div class="flex justify-between font-medium">
               <span id="stepTotalLabel" class="text-slate-400">Net to invest</span>
               <span id="stepTotalSuggested" class="text-emerald-300">$0</span>
