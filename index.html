@@ -142,84 +142,92 @@
           </button>
         </div>
 
-        <!-- Empty / hold state -->
-        <div id="tradesEmpty" class="py-8 text-center">
-          <div class="text-slate-600 text-2xl mb-2">–</div>
-          <div class="text-xs text-slate-500">No trades needed</div>
-          <div class="text-[11px] text-slate-600 mt-1">Portfolio is on target</div>
-        </div>
+        <div class="lg:flex lg:items-start lg:gap-5">
 
-        <!-- Active trades -->
-        <div id="tradesContent" class="hidden space-y-4 lg:space-y-0 lg:flex lg:items-start lg:gap-5">
-          <div class="overflow-x-auto lg:flex-1">
-            <table class="w-full text-xs align-middle">
-              <thead>
-                <tr class="border-b border-slate-800 text-slate-500 text-[10px] uppercase tracking-wider">
-                  <th class="pb-2 pr-2 text-left font-medium">Asset</th>
-                  <th class="pb-2 px-2 text-center font-medium">Action</th>
-                  <th class="pb-2 px-2 text-right font-medium">Amount</th>
-                  <th class="pb-2 px-2 text-right font-medium">Target</th>
-                  <th class="pb-2 pl-2 text-right font-medium">Units</th>
-                </tr>
-              </thead>
-              <tbody id="tradesTableBody" class="divide-y divide-slate-800/60">
-                <!-- JS rendered -->
-              </tbody>
-            </table>
+          <!-- Left: trades table / empty state -->
+          <div class="lg:flex-1">
+            <!-- Empty / hold state -->
+            <div id="tradesEmpty" class="py-8 text-center">
+              <div class="text-slate-600 text-2xl mb-2">–</div>
+              <div class="text-xs text-slate-500">No trades needed</div>
+              <div class="text-[11px] text-slate-600 mt-1">Portfolio is on target</div>
+            </div>
+
+            <!-- Active trades -->
+            <div id="tradesContent" class="hidden overflow-x-auto">
+              <table class="w-full text-xs align-middle">
+                <thead>
+                  <tr class="border-b border-slate-800 text-slate-500 text-[10px] uppercase tracking-wider">
+                    <th class="pb-2 pr-2 text-left font-medium">Asset</th>
+                    <th class="pb-2 px-2 text-center font-medium">Action</th>
+                    <th class="pb-2 px-2 text-right font-medium">Amount</th>
+                    <th class="pb-2 px-2 text-right font-medium">Target</th>
+                    <th class="pb-2 pl-2 text-right font-medium">Units</th>
+                  </tr>
+                </thead>
+                <tbody id="tradesTableBody" class="divide-y divide-slate-800/60">
+                  <!-- JS rendered -->
+                </tbody>
+              </table>
+            </div>
           </div>
 
-          <!-- Step summary -->
-          <div class="border-t border-slate-800 pt-3 space-y-1.5 text-[11px]
-                      lg:w-64 lg:shrink-0 lg:border-t-0 lg:border-l lg:pt-0 lg:pl-5">
-            <div class="flex justify-between font-medium">
-              <span id="stepTotalLabel" class="text-slate-400">Net to invest</span>
-              <span id="stepTotalSuggested" class="text-emerald-300">$0</span>
+          <!-- Right: step summary + action buttons -->
+          <div class="mt-4 pt-3 border-t border-slate-800 space-y-4
+                      lg:mt-0 lg:pt-0 lg:border-t-0 lg:border-l lg:pl-5 lg:w-64 lg:shrink-0">
+            <!-- Step summary -->
+            <div id="tradesSummary" class="hidden space-y-1.5 text-[11px]">
+              <div class="flex justify-between font-medium">
+                <span id="stepTotalLabel" class="text-slate-400">Net to invest</span>
+                <span id="stepTotalSuggested" class="text-emerald-300">$0</span>
+              </div>
+              <div class="flex justify-between text-slate-400">
+                <span>Current portfolio</span>
+                <span id="stepCurrentValue" class="text-slate-200 font-medium">$0</span>
+              </div>
+              <div class="flex justify-between text-slate-400">
+                <span>Period target</span>
+                <span id="stepTargetValue" class="text-slate-200 font-medium">$0</span>
+              </div>
+              <div class="flex justify-between text-slate-400">
+                <span>Post-step total</span>
+                <span id="stepEffectiveTarget" class="text-slate-200 font-medium">$0</span>
+              </div>
+              <div id="stepCapNote" class="hidden text-[10px] text-amber-400/80 leading-relaxed"></div>
+              <div id="stepFilterNote" class="hidden text-[10px] text-slate-500 leading-relaxed"></div>
+              <div class="flex justify-between items-baseline text-slate-400">
+                <span>Invested after step</span>
+                <span class="text-right">
+                  <span id="stepEstimatedInvested" class="text-slate-200 font-medium">$0</span>
+                  <span id="stepEstimatedBreakdown" class="block text-[10px] text-slate-600 font-normal"></span>
+                </span>
+              </div>
             </div>
-            <div class="flex justify-between text-slate-400">
-              <span>Current portfolio</span>
-              <span id="stepCurrentValue" class="text-slate-200 font-medium">$0</span>
-            </div>
-            <div class="flex justify-between text-slate-400">
-              <span>Period target</span>
-              <span id="stepTargetValue" class="text-slate-200 font-medium">$0</span>
-            </div>
-            <div class="flex justify-between text-slate-400">
-              <span>Post-step total</span>
-              <span id="stepEffectiveTarget" class="text-slate-200 font-medium">$0</span>
-            </div>
-            <div id="stepCapNote" class="hidden text-[10px] text-amber-400/80 leading-relaxed"></div>
-            <div id="stepFilterNote" class="hidden text-[10px] text-slate-500 leading-relaxed"></div>
-            <div class="flex justify-between items-baseline text-slate-400">
-              <span>Invested after step</span>
-              <span class="text-right">
-                <span id="stepEstimatedInvested" class="text-slate-200 font-medium">$0</span>
-                <span id="stepEstimatedBreakdown" class="block text-[10px] text-slate-600 font-normal"></span>
-              </span>
+
+            <!-- Action buttons -->
+            <div class="pt-3 border-t border-slate-800 flex flex-col gap-2">
+              <button id="trackCurrentStateBtn"
+                      class="hidden w-full px-4 py-2.5 min-h-[40px] rounded-xl
+                             bg-sky-500 text-slate-950 text-sm font-bold
+                             hover:bg-sky-400 active:scale-[0.97] transition-all">
+                ◎ Track current state
+              </button>
+              <button id="applyStepBtn"
+                      class="w-full px-4 py-2.5 min-h-[40px] rounded-xl
+                             bg-emerald-500 text-slate-950 text-sm font-bold
+                             hover:bg-emerald-400 active:scale-[0.97] transition-all">
+                ✓ Mark step applied
+              </button>
+              <p id="stepHint" class="hidden text-[10px] text-slate-600 leading-relaxed">
+                Suggested units are pre-filled (positive = buy, negative = sell). Adjust to match
+                what you actually traded, then mark step applied.
+              </p>
+              <p id="trackHint" class="hidden text-[10px] text-slate-600 leading-relaxed">
+                No snapshots yet. Track current state before applying your first step.
+              </p>
             </div>
           </div>
-        </div>
 
-        <!-- Action buttons -->
-        <div class="border-t border-slate-800 pt-3 flex flex-col gap-2 lg:w-64 lg:ml-auto">
-          <button id="trackCurrentStateBtn"
-                  class="hidden w-full px-4 py-2.5 min-h-[40px] rounded-xl
-                         bg-sky-500 text-slate-950 text-sm font-bold
-                         hover:bg-sky-400 active:scale-[0.97] transition-all">
-            ◎ Track current state
-          </button>
-          <button id="applyStepBtn"
-                  class="w-full px-4 py-2.5 min-h-[40px] rounded-xl
-                         bg-emerald-500 text-slate-950 text-sm font-bold
-                         hover:bg-emerald-400 active:scale-[0.97] transition-all">
-            ✓ Mark step applied
-          </button>
-          <p id="stepHint" class="hidden text-[10px] text-slate-600 leading-relaxed">
-            Suggested units are pre-filled (positive = buy, negative = sell). Adjust to match
-            what you actually traded, then mark step applied.
-          </p>
-          <p id="trackHint" class="hidden text-[10px] text-slate-600 leading-relaxed">
-            No snapshots yet. Track current state before applying your first step.
-          </p>
         </div>
 
       </div>

@@ -194,6 +194,7 @@ function getElements() {
     // Trades panel
     tradesEmpty: document.getElementById('tradesEmpty'),
     tradesContent: document.getElementById('tradesContent'),
+    tradesSummary: document.getElementById('tradesSummary'),
     tradesTableBody: document.getElementById('tradesTableBody'),
     stepCurrentValue: document.getElementById('stepCurrentValue'),
     stepTargetValue: document.getElementById('stepTargetValue'),
@@ -559,6 +560,7 @@ function renderStepDetailsAndTrades() {
     els.stepError.classList.remove('hidden');
     els.tradesEmpty.classList.remove('hidden');
     els.tradesContent.classList.add('hidden');
+    els.tradesSummary.classList.add('hidden');
     return;
   }
 
@@ -568,6 +570,7 @@ function renderStepDetailsAndTrades() {
     els.stepError.classList.remove('hidden');
     els.tradesEmpty.classList.remove('hidden');
     els.tradesContent.classList.add('hidden');
+    els.tradesSummary.classList.add('hidden');
     return;
   }
 
@@ -578,6 +581,7 @@ function renderStepDetailsAndTrades() {
     els.stepError.classList.remove('hidden');
     els.tradesEmpty.classList.remove('hidden');
     els.tradesContent.classList.add('hidden');
+    els.tradesSummary.classList.add('hidden');
     return;
   }
 
@@ -588,6 +592,7 @@ function renderStepDetailsAndTrades() {
 
   els.tradesEmpty.classList.toggle('hidden', hasAction);
   els.tradesContent.classList.toggle('hidden', !hasAction);
+  els.tradesSummary.classList.toggle('hidden', !hasAction);
 
   els.stepCurrentValue.textContent = formatUSD(details.currentValue);
   els.stepTargetValue.textContent = formatUSD(details.periodTarget);
