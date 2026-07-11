@@ -3,6 +3,8 @@
 
 const STORAGE_KEY = 'crypto_value_averaging_state_v1';
 
+const SYSTEM_FONT_STACK = "-apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif";
+
 // Efficiency-tuning defaults. Bands follow the classic 5/25 rule: cuts ~80%
 // of churn trades while preserving allocation discipline. Dust $10 because
 // exchange fees eat smaller trades.
@@ -247,7 +249,7 @@ function syncConfigInputsFromState() {
       config.rebalanceRelBand != null ? config.rebalanceRelBand : '';
   }
   if (els.noSellModeInput) {
-    els.noSellModeInput.value = config.noSellMode ? 'on' : 'off';
+    els.noSellModeInput.checked = !!config.noSellMode;
   }
 }
 
@@ -271,7 +273,7 @@ function syncStateFromConfigInputs() {
     cfg.rebalanceRelBand = Math.max(0, Number(els.rebalanceRelBandInput.value) || 0);
   }
   if (els.noSellModeInput) {
-    cfg.noSellMode = els.noSellModeInput.value === 'on';
+    cfg.noSellMode = !!els.noSellModeInput.checked;
   }
 }
 
@@ -284,33 +286,33 @@ function renderAssetsTable() {
 
   state.assets.forEach((asset, index) => {
     const tr = document.createElement('tr');
-    tr.className = 'hover:bg-slate-800/60';
+    tr.className = 'hover:bg-white/5';
 
     const currentAssetValue = (Number(asset.price) || 0) * (Number(asset.units) || 0);
     const targetPct = Number(asset.allocation) || 0;
 
-    let currentPctCell = '<td class="py-2 px-2 text-right text-slate-500 whitespace-nowrap">–</td>';
+    let currentPctCell = '<td class="py-3 px-2 text-right text-ios-label3 whitespace-nowrap">–</td>';
     if (totalPortfolioValue > 0 && currentAssetValue > 0) {
       const currentPct = (currentAssetValue / totalPortfolioValue) * 100;
       const drift = Math.abs(currentPct - targetPct);
-      const color = drift <= 1 ? 'text-emerald-300' : drift <= 5 ? 'text-amber-300' : 'text-rose-300';
+      const color = drift <= 1 ? 'text-ios-green' : drift <= 5 ? 'text-ios-orange' : 'text-ios-red';
       const driftSign = currentPct >= targetPct ? '+' : '';
       const driftStr = `${driftSign}${(currentPct - targetPct).toFixed(1)}%`;
-      currentPctCell = `<td class="py-2 px-2 text-right whitespace-nowrap">
+      currentPctCell = `<td class="py-3 px-2 text-right whitespace-nowrap">
         <span class="${color} font-medium">${currentPct.toFixed(1)}%</span>
-        <span class="text-[10px] text-slate-500 ml-1">${driftStr}</span>
+        <span class="text-[10px] text-ios-label3 ml-1">${driftStr}</span>
       </td>`;
     }
 
     // Ticker: locked (plain text, no border) once a symbol has been entered
     const tickerLocked = !!asset.symbol;
     const tickerCell = tickerLocked
-      ? `<td class="py-2 pr-2 whitespace-nowrap">
-           <span class="text-xs font-medium text-slate-100 px-1">${escapeHtml(asset.symbol)}</span>
+      ? `<td class="py-3 pr-2 whitespace-nowrap">
+           <span class="text-[13px] font-medium text-white px-1">${escapeHtml(asset.symbol)}</span>
          </td>`
-      : `<td class="py-2 pr-2 whitespace-nowrap">
+      : `<td class="py-3 pr-2 whitespace-nowrap">
            <input data-index="${index}" data-field="symbol" type="text"
-                  class="w-20 md:w-24 rounded-md border border-slate-700 bg-slate-900/80 px-2 py-1 text-xs text-slate-100 focus:outline-none focus:ring-1 focus:ring-emerald-500/70 focus:border-emerald-400"
+                  class="w-20 md:w-24 rounded-md bg-white/5 px-2 py-1.5 text-[13px] text-white focus:outline-none focus:ring-2 focus:ring-ios-blue/60"
                   value="" placeholder="BTC" />
          </td>`;
 
@@ -318,10 +320,10 @@ function renderAssetsTable() {
     const unitsNum = Number(asset.units) || 0;
     const unitsDisplay = unitsNum ? unitsNum.toFixed(4) : '–';
     const unitsCell = unitsLocked
-      ? `<td class="py-2 px-2 text-right text-slate-400 text-xs whitespace-nowrap hidden sm:table-cell cursor-help" title="Units are locked after the first snapshot. Use &quot;Mark step applied&quot; to update holdings.">${unitsDisplay}</td>`
-      : `<td class="py-2 px-2 text-right whitespace-nowrap hidden sm:table-cell">
+      ? `<td class="py-3 px-2 text-right text-ios-label2 text-[13px] whitespace-nowrap hidden sm:table-cell cursor-help" title="Units are locked after the first snapshot. Use &quot;Mark step applied&quot; to update holdings.">${unitsDisplay}</td>`
+      : `<td class="py-3 px-2 text-right whitespace-nowrap hidden sm:table-cell">
            <input data-index="${index}" data-field="units" type="number" step="0.00000001"
-                  class="number-input w-24 rounded-md border border-slate-700 bg-slate-900/80 px-2 py-1 text-xs text-right text-slate-100 focus:outline-none focus:ring-1 focus:ring-emerald-500/70 focus:border-emerald-400"
+                  class="number-input w-24 rounded-md bg-white/5 px-2 py-1.5 text-[13px] text-right text-white focus:outline-none focus:ring-2 focus:ring-ios-blue/60"
                   value="${escapeAttr(asset.units ?? '')}" />
          </td>`;
 
@@ -334,35 +336,35 @@ function renderAssetsTable() {
     const avgCostDisplay = avgCostNum ? formatUSD(avgCostNum) : '–';
     const avgCostLocked = unitsLocked && avgCostNum > 0;
     const avgCostCell = avgCostLocked
-      ? `<td class="py-2 px-2 text-right text-slate-400 text-xs whitespace-nowrap hidden sm:table-cell cursor-help" title="Average cost updates automatically from buys after &quot;Mark step applied&quot;.">${avgCostDisplay}</td>`
-      : `<td class="py-2 px-2 text-right whitespace-nowrap hidden sm:table-cell">
+      ? `<td class="py-3 px-2 text-right text-ios-label2 text-[13px] whitespace-nowrap hidden sm:table-cell cursor-help" title="Average cost updates automatically from buys after &quot;Mark step applied&quot;.">${avgCostDisplay}</td>`
+      : `<td class="py-3 px-2 text-right whitespace-nowrap hidden sm:table-cell">
            <input data-index="${index}" data-field="avgCost" type="number" step="0.00000001"
-                  class="number-input w-24 rounded-md border border-slate-700 bg-slate-900/80 px-2 py-1 text-xs text-right text-slate-100 focus:outline-none focus:ring-1 focus:ring-emerald-500/70 focus:border-emerald-400"
+                  class="number-input w-24 rounded-md bg-white/5 px-2 py-1.5 text-[13px] text-right text-white focus:outline-none focus:ring-2 focus:ring-ios-blue/60"
                   value="${escapeAttr(asset.avgCost ?? '')}" placeholder="0.00" />
          </td>`;
 
     tr.innerHTML = `
       ${tickerCell}
-      <td class="py-2 px-2 text-right whitespace-nowrap">
+      <td class="py-3 px-2 text-right whitespace-nowrap">
         <input data-index="${index}" data-field="allocation" type="number" step="0.1"
-               class="number-input w-20 rounded-md border border-slate-700 bg-slate-900/80 px-2 py-1 text-xs text-right text-slate-100 focus:outline-none focus:ring-1 focus:ring-emerald-500/70 focus:border-emerald-400"
+               class="number-input w-20 rounded-md bg-white/5 px-2 py-1.5 text-[13px] text-right text-white focus:outline-none focus:ring-2 focus:ring-ios-blue/60"
                value="${escapeAttr(asset.allocation ?? '')}" />
       </td>
       ${unitsCell}
       ${avgCostCell}
-      <td class="py-2 px-2 text-right whitespace-nowrap ${asset.price ? 'text-slate-200' : (state.lastPricesFetch ? 'text-amber-400' : 'text-slate-500')}">
+      <td class="py-3 px-2 text-right whitespace-nowrap ${asset.price ? 'text-white' : (state.lastPricesFetch ? 'text-ios-orange' : 'text-ios-label3')}">
         ${asset.price
           ? formatUSD(asset.price)
           : (state.lastPricesFetch ? '⚠ no price' : '–')}
       </td>
-      <td class="py-2 px-2 text-right text-slate-200 whitespace-nowrap">
+      <td class="py-3 px-2 text-right text-white whitespace-nowrap">
         ${asset.price && asset.units ? formatUSD(asset.price * asset.units) : '–'}
       </td>
-      <td class="py-2 px-2 text-right whitespace-nowrap hidden md:table-cell">${computeUnrealizedInnerHtml(asset)}</td>
+      <td class="py-3 px-2 text-right whitespace-nowrap hidden md:table-cell">${computeUnrealizedInnerHtml(asset)}</td>
       ${currentPctCell}
-      <td class="py-2 pl-2 text-right whitespace-nowrap">
+      <td class="py-3 pl-2 text-right whitespace-nowrap">
         <button data-index="${index}" data-action="remove-asset"
-                class="text-[11px] px-2 py-1 rounded-md border border-slate-700 text-slate-300 hover:border-rose-500 hover:text-rose-300 transition-colors">
+                class="text-[11px] w-6 h-6 inline-flex items-center justify-center rounded-full bg-white/5 text-ios-label2 active:bg-ios-red/15 active:text-ios-red transition-colors">
           ✕
         </button>
       </td>
@@ -377,8 +379,8 @@ function renderAssetsTable() {
   const totalAllocation = state.assets.reduce((sum, a) => sum + (Number(a.allocation) || 0), 0);
   els.allocationTotal.textContent = `${totalAllocation.toFixed(1)}%`;
   els.allocationTotal.className =
-    'text-xs font-semibold ' +
-    (Math.abs(totalAllocation - 100) < 0.01 ? 'text-emerald-300' : 'text-amber-300');
+    'text-[13px] font-semibold ' +
+    (Math.abs(totalAllocation - 100) < 0.01 ? 'text-ios-green' : 'text-ios-orange');
 }
 
 // Inner HTML (no <td> wrapper) for an asset's unrealized P&L, derived from its
@@ -392,9 +394,9 @@ function computeUnrealizedInnerHtml(asset) {
 
   const unrealized = (price - avgCostNum) * unitsNum;
   const unrealizedPct = ((price - avgCostNum) / avgCostNum) * 100;
-  const color = unrealized > 0 ? 'text-emerald-300' : unrealized < 0 ? 'text-rose-300' : 'text-slate-200';
+  const color = unrealized > 0 ? 'text-ios-green' : unrealized < 0 ? 'text-ios-red' : 'text-white';
   return `<span class="${color} font-medium">${unrealized >= 0 ? '+' : ''}${formatUSD(unrealized)}</span>
-    <span class="text-[10px] text-slate-500 ml-1">${formatPercent(unrealizedPct, { signed: true })}</span>`;
+    <span class="text-[10px] text-ios-label3 ml-1">${formatPercent(unrealizedPct, { signed: true })}</span>`;
 }
 
 function computePortfolioValue() {
@@ -426,25 +428,25 @@ function renderSummaryAndNextStep() {
 
   if (stepKind === 'Invest') {
     els.heroDirectionBadge.textContent = '↑ Invest';
-    els.heroDirectionBadge.className = 'text-xs sm:text-sm font-bold text-emerald-300';
+    els.heroDirectionBadge.className = 'text-[15px] font-semibold text-ios-green mt-1';
     els.heroAmount.textContent = formatUSD(cappedChange);
-    els.heroAmount.className = 'text-sm sm:text-xl font-bold tracking-tight text-emerald-300 mt-0.5';
+    els.heroAmount.className = 'text-[22px] font-bold tracking-tight text-ios-green';
   } else if (stepKind === 'Withdraw') {
     els.heroDirectionBadge.textContent = '↓ Withdraw';
-    els.heroDirectionBadge.className = 'text-xs sm:text-sm font-bold text-rose-300';
+    els.heroDirectionBadge.className = 'text-[15px] font-semibold text-ios-red mt-1';
     els.heroAmount.textContent = formatUSD(Math.abs(cappedChange));
-    els.heroAmount.className = 'text-sm sm:text-xl font-bold tracking-tight text-rose-300 mt-0.5';
+    els.heroAmount.className = 'text-[22px] font-bold tracking-tight text-ios-red';
   } else if (stepKind === 'Rebalance') {
     const turnover = trades.reduce((s, t) => s + Math.max(t.suggestedValue, 0), 0);
     els.heroDirectionBadge.textContent = '↻ Rebalance';
-    els.heroDirectionBadge.className = 'text-xs sm:text-sm font-bold text-sky-300';
+    els.heroDirectionBadge.className = 'text-[15px] font-semibold text-ios-blue mt-1';
     els.heroAmount.textContent = formatUSD(turnover);
-    els.heroAmount.className = 'text-sm sm:text-xl font-bold tracking-tight text-sky-300 mt-0.5';
+    els.heroAmount.className = 'text-[22px] font-bold tracking-tight text-ios-blue';
   } else {
     els.heroDirectionBadge.textContent = '— Hold';
-    els.heroDirectionBadge.className = 'text-xs sm:text-sm font-bold text-slate-400';
+    els.heroDirectionBadge.className = 'text-[15px] font-semibold text-ios-label2 mt-1';
     els.heroAmount.textContent = 'On target';
-    els.heroAmount.className = 'text-sm sm:text-xl font-semibold tracking-tight text-slate-400 mt-0.5';
+    els.heroAmount.className = 'text-[17px] font-semibold tracking-tight text-ios-label2';
   }
 
   // ── Card 2: Portfolio + Invested ───────────────────────────────
@@ -454,13 +456,13 @@ function renderSummaryAndNextStep() {
   // ── Card 3: P&L ────────────────────────────────────────────────
   els.statPnL.textContent = (pnl >= 0 ? '+' : '') + formatUSD(pnl);
   els.statPnL.className =
-    'text-sm sm:text-xl font-bold ' +
-    (pnl > 0 ? 'text-emerald-300' : pnl < 0 ? 'text-rose-300' : 'text-slate-200');
+    'text-[14px] font-semibold ' +
+    (pnl > 0 ? 'text-ios-green' : pnl < 0 ? 'text-ios-red' : 'text-white');
 
   els.statPnLPct.textContent = (pnl >= 0 ? '+' : '') + formatPercent(pnlPct);
   els.statPnLPct.className =
-    'text-[10px] sm:text-xs font-semibold mt-0.5 ' +
-    (pnl > 0 ? 'text-emerald-300' : pnl < 0 ? 'text-rose-300' : 'text-slate-400');
+    'text-[14px] font-semibold ' +
+    (pnl > 0 ? 'text-ios-green' : pnl < 0 ? 'text-ios-red' : 'text-ios-label2');
 
   // ── Track-state button is meaningless without prices ───────────
   if (els.trackCurrentStateBtn) {
@@ -482,11 +484,11 @@ function renderSummaryAndNextStep() {
         ? `Prices: ${minsAgo}m ago` + (stale ? ' — may be stale' : '')
         : `Prices: ${date.toLocaleTimeString()} — may be stale`;
     els.lastUpdated.className = stale
-      ? 'text-[11px] text-amber-400 mt-0.5'
-      : 'text-[11px] text-slate-500 mt-0.5';
+      ? 'text-[13px] text-ios-orange mt-1.5'
+      : 'text-[13px] text-ios-label2 mt-1.5';
   } else {
     els.lastUpdated.textContent = 'Prices not yet loaded · refresh to start';
-    els.lastUpdated.className = 'text-[11px] text-slate-500 mt-0.5';
+    els.lastUpdated.className = 'text-[13px] text-ios-label2 mt-1.5';
   }
 }
 
@@ -634,11 +636,11 @@ function renderStepDetailsAndTrades() {
   if (els.stepTotalLabel && els.stepTotalSuggested) {
     if (stepKind === 'Withdraw') {
       els.stepTotalLabel.textContent = 'Net to withdraw';
-      els.stepTotalSuggested.className = 'text-rose-300 font-medium';
+      els.stepTotalSuggested.className = 'text-ios-red font-medium';
       els.stepTotalSuggested.textContent = formatUSD(Math.abs(actualNet));
     } else if (stepKind === 'Rebalance') {
       els.stepTotalLabel.textContent = 'Rebalance turnover';
-      els.stepTotalSuggested.className = 'text-sky-300 font-medium';
+      els.stepTotalSuggested.className = 'text-ios-blue font-medium';
       els.stepTotalSuggested.textContent = formatUSD(totalBuys);
     } else {
       // In no-sell mode some sells are suppressed, so actualNet is the buy-only
@@ -648,7 +650,7 @@ function renderStepDetailsAndTrades() {
         (t) => t.filters && t.filters.includes('noSell'),
       );
       els.stepTotalLabel.textContent = hasSuppressedSells ? 'Total to buy' : 'Net to invest';
-      els.stepTotalSuggested.className = 'text-emerald-300 font-medium';
+      els.stepTotalSuggested.className = 'text-ios-green font-medium';
       els.stepTotalSuggested.textContent = formatUSD(Math.abs(actualNet));
     }
   }
@@ -674,7 +676,7 @@ function renderStepDetailsAndTrades() {
 
   trades.forEach((t) => {
     const tr = document.createElement('tr');
-    tr.className = 'hover:bg-slate-800/30';
+    tr.className = 'hover:bg-white/5';
 
     const isBuy = t.suggestedValue > TRADE_EPSILON_USD;
     const isSell = t.suggestedValue < -TRADE_EPSILON_USD;
@@ -682,31 +684,31 @@ function renderStepDetailsAndTrades() {
       const label = f === 'dust' ? 'dust' : 'held';
       const title = f === 'dust' ? `Below minimum trade size` : `No-sell mode active`;
       return (
-        `<span class="ml-1 text-[9px] text-slate-500 bg-slate-800/60 border border-slate-700 ` +
+        `<span class="ml-1 text-[9px] text-ios-label2 bg-white/5 ` +
         `rounded px-1 py-0.5" title="${escapeAttr(title)}">${escapeHtml(label)}</span>`
       );
     }).join('');
 
     const actionBadge = isBuy
-      ? '<span class="text-[10px] font-bold text-emerald-300 bg-emerald-500/10 ' +
-        'border border-emerald-500/30 rounded px-1.5 py-0.5">BUY</span>'
+      ? '<span class="text-[10px] font-bold text-ios-green bg-ios-green/12 ' +
+        'rounded px-1.5 py-0.5">BUY</span>'
       : isSell
-      ? '<span class="text-[10px] font-bold text-rose-300 bg-rose-500/10 ' +
-        'border border-rose-500/30 rounded px-1.5 py-0.5">SELL</span>'
+      ? '<span class="text-[10px] font-bold text-ios-red bg-ios-red/12 ' +
+        'rounded px-1.5 py-0.5">SELL</span>'
       : (t.filters && t.filters.length
-          ? '<span class="text-[10px] font-bold text-slate-500 bg-slate-800/40 ' +
-            'border border-slate-700 rounded px-1.5 py-0.5">HOLD</span>'
-          : '<span class="text-[10px] text-slate-600">—</span>');
+          ? '<span class="text-[10px] font-bold text-ios-label2 bg-white/5 ' +
+            'rounded px-1.5 py-0.5">HOLD</span>'
+          : '<span class="text-[10px] text-ios-label3">—</span>');
 
     const amountText =
       Math.abs(t.suggestedValue) >= TRADE_EPSILON_USD
         ? formatUSD(Math.abs(t.suggestedValue))
         : '—';
     const amountClass = isBuy
-      ? 'text-emerald-300 font-medium'
+      ? 'text-ios-green font-medium'
       : isSell
-      ? 'text-rose-300 font-medium'
-      : 'text-slate-600';
+      ? 'text-ios-red font-medium'
+      : 'text-ios-label3';
 
     // Pre-fill the units-delta input with the signed suggested units.
     // Negative values (SELLs) are preserved — user reviewing an invest period
@@ -719,15 +721,15 @@ function renderStepDetailsAndTrades() {
     const targetText = t.targetValue >= 0.005 ? formatUSD(t.targetValue) : '—';
 
     tr.innerHTML = `
-      <td class="py-2 pr-2 text-slate-100 font-medium whitespace-nowrap">
+      <td class="py-3 pr-2 text-white font-medium whitespace-nowrap">
         ${escapeHtml(t.symbol)}${filterBadges}
       </td>
-      <td class="py-2 px-2 text-center whitespace-nowrap">${actionBadge}</td>
-      <td class="py-2 px-2 text-right whitespace-nowrap ${amountClass}">${amountText}</td>
-      <td class="py-2 px-2 text-right whitespace-nowrap text-slate-400">${targetText}</td>
-      <td class="py-2 pl-2 text-right whitespace-nowrap">
+      <td class="py-3 px-2 text-center whitespace-nowrap">${actionBadge}</td>
+      <td class="py-3 px-2 text-right whitespace-nowrap ${amountClass}">${amountText}</td>
+      <td class="py-3 px-2 text-right whitespace-nowrap text-ios-label2">${targetText}</td>
+      <td class="py-3 pl-2 text-right whitespace-nowrap">
         <input data-asset-index="${t.assetIndex}" type="number" step="0.00000001"
-               class="number-input w-24 rounded-md border border-slate-700 bg-slate-900/80 px-2 py-1 text-xs text-right text-slate-100 focus:outline-none focus:ring-1 focus:ring-emerald-500/70 focus:border-emerald-400"
+               class="number-input w-24 rounded-md bg-white/5 px-2 py-1.5 text-[13px] text-right text-white focus:outline-none focus:ring-2 focus:ring-ios-blue/60"
                value="${escapeAttr(suggestedUnitsVal)}"
                placeholder="0" />
       </td>
@@ -978,7 +980,7 @@ function renderHistory(rows) {
   if (isEmpty) {
     const tr = document.createElement('tr');
     tr.innerHTML =
-      '<td colspan="7" class="py-3 px-2 text-center text-xs text-slate-500">No snapshots yet. Track current state to create the first one.</td>';
+      '<td colspan="7" class="py-4 px-2 text-center text-[13px] text-ios-label2">No snapshots yet. Track current state to create the first one.</td>';
     els.historyTableBody.appendChild(tr);
     renderAnalytics([]);
     renderChart();
@@ -991,17 +993,17 @@ function renderHistory(rows) {
     const tr = document.createElement('tr');
     const date = row.created_at ? new Date(row.created_at) : null;
     const pnlClass =
-      row.pnl > 0 ? 'text-emerald-300' : row.pnl < 0 ? 'text-rose-300' : 'text-slate-200';
+      row.pnl > 0 ? 'text-ios-green' : row.pnl < 0 ? 'text-ios-red' : 'text-white';
 
     tr.innerHTML = `
-      <td class="py-2 px-2 text-slate-200 whitespace-nowrap">${date ? date.toLocaleString(undefined, { dateStyle: 'short', timeStyle: 'short' }) : '–'}</td>
-      <td class="py-2 px-2 text-right text-slate-200 whitespace-nowrap">${row.period_index}</td>
-      <td class="py-2 px-2 text-right text-slate-200 whitespace-nowrap">${formatUSD(row.invested)}</td>
-      <td class="py-2 px-2 text-right text-slate-200 whitespace-nowrap">${formatUSD(row.portfolio_value)}</td>
-      <td class="py-2 px-2 text-right whitespace-nowrap ${pnlClass}">${formatUSD(row.pnl)}</td>
-      <td class="py-2 px-2 text-right whitespace-nowrap ${pnlClass}">${formatPercent(row.pnl_percent)}</td>
-      <td class="py-2 pl-2 text-right whitespace-nowrap">
-        <button data-id="${row.id}" class="history-delete-btn text-[11px] text-slate-500 hover:text-rose-400 transition-colors px-1.5 py-0.5 rounded hover:bg-rose-500/10 border border-transparent hover:border-rose-500/30" title="Delete this record">✕</button>
+      <td class="py-3 px-2 text-white whitespace-nowrap">${date ? date.toLocaleString(undefined, { dateStyle: 'short', timeStyle: 'short' }) : '–'}</td>
+      <td class="py-3 px-2 text-right text-white whitespace-nowrap">${row.period_index}</td>
+      <td class="py-3 px-2 text-right text-white whitespace-nowrap">${formatUSD(row.invested)}</td>
+      <td class="py-3 px-2 text-right text-white whitespace-nowrap">${formatUSD(row.portfolio_value)}</td>
+      <td class="py-3 px-2 text-right whitespace-nowrap ${pnlClass}">${formatUSD(row.pnl)}</td>
+      <td class="py-3 px-2 text-right whitespace-nowrap ${pnlClass}">${formatPercent(row.pnl_percent)}</td>
+      <td class="py-3 pl-2 text-right whitespace-nowrap">
+        <button data-id="${row.id}" class="history-delete-btn text-[11px] w-6 h-6 inline-flex items-center justify-center rounded-full bg-white/5 text-ios-label2 active:bg-ios-red/15 active:text-ios-red transition-colors" title="Delete this record">✕</button>
       </td>
     `;
 
@@ -1173,8 +1175,8 @@ function renderAnalytics(rows) {
   if (totalReturnEl) {
     totalReturnEl.textContent = (totalReturnPct >= 0 ? '+' : '') + formatPercent(totalReturnPct);
     totalReturnEl.className =
-      'text-sm font-bold mt-0.5 ' +
-      (totalReturnPct > 0 ? 'text-emerald-300' : totalReturnPct < 0 ? 'text-rose-300' : 'text-slate-200');
+      'text-[15px] font-bold mt-0.5 ' +
+      (totalReturnPct > 0 ? 'text-ios-green' : totalReturnPct < 0 ? 'text-ios-red' : 'text-white');
   }
 
   if (bestEl) {
@@ -1189,7 +1191,7 @@ function renderAnalytics(rows) {
       ? (worstChange >= 0 ? '+' : '') + formatUSD(worstChange)
       : '—';
     worstEl.className =
-      'text-sm font-bold mt-0.5 ' + (worstPositive ? 'text-emerald-300' : 'text-rose-300');
+      'text-[15px] font-bold mt-0.5 ' + (worstPositive ? 'text-ios-green' : 'text-ios-red');
   }
 }
 
@@ -1412,8 +1414,8 @@ function renderChart() {
         {
           label: 'Portfolio',
           data: portfolioData,
-          borderColor: '#34d399',
-          backgroundColor: 'rgba(52,211,153,0.07)',
+          borderColor: '#30d158',
+          backgroundColor: 'rgba(48,209,88,0.08)',
           fill: true,
           tension: 0.3,
           pointStyle: 'circle',
@@ -1424,7 +1426,7 @@ function renderChart() {
         {
           label: 'Invested',
           data: investedData,
-          borderColor: '#38bdf8',
+          borderColor: '#0a84ff',
           backgroundColor: 'transparent',
           fill: false,
           tension: 0.3,
@@ -1437,8 +1439,8 @@ function renderChart() {
           label: 'Step applied',
           type: 'scatter',
           data: stepData,
-          backgroundColor: '#f59e0b',
-          borderColor: '#92400e',
+          backgroundColor: '#ff9f0a',
+          borderColor: '#8a5400',
           borderWidth: 1,
           pointStyle: 'triangle',
           pointRadius: 7,
@@ -1448,7 +1450,7 @@ function renderChart() {
         {
           label: 'P&L %',
           data: pnlPctData,
-          borderColor: '#a78bfa',
+          borderColor: '#bf5af2',
           backgroundColor: 'transparent',
           fill: false,
           tension: 0.3,
@@ -1468,14 +1470,14 @@ function renderChart() {
       plugins: {
         legend: { display: false }, // legend replaced by inline HTML legend below chart
         tooltip: {
-          backgroundColor: '#0f172a',
-          borderColor: '#334155',
+          backgroundColor: '#1c1c1e',
+          borderColor: 'rgba(255,255,255,0.12)',
           borderWidth: 1,
-          titleColor: '#94a3b8',
-          bodyColor: '#e2e8f0',
+          titleColor: '#98989f',
+          bodyColor: '#ffffff',
           padding: 10,
-          bodyFont: { family: "'IBM Plex Sans', sans-serif", size: 11 },
-          titleFont: { family: "'IBM Plex Sans', sans-serif", size: 10 },
+          bodyFont: { family: SYSTEM_FONT_STACK, size: 11 },
+          titleFont: { family: SYSTEM_FONT_STACK, size: 10 },
           callbacks: {
             title: (items) => (items.length ? fmtTooltipLabel(items[0].parsed.x) : ''),
             label: (ctx) => {
@@ -1493,38 +1495,38 @@ function renderChart() {
           type: 'linear',
           bounds: 'data', // clamp to actual data extent instead of Chart.js's "nice number" overshoot
           ticks: {
-            color: '#94a3b8',
-            font: { family: "'IBM Plex Sans', sans-serif", size: 10 },
+            color: '#98989f',
+            font: { family: SYSTEM_FONT_STACK, size: 10 },
             maxTicksLimit: 6,
             callback: fmtAxisLabel,
             padding: 6,
           },
-          grid: { color: 'rgba(30,41,59,0.8)' },
-          border: { color: '#1e293b' },
+          grid: { color: 'rgba(255,255,255,0.06)' },
+          border: { color: 'rgba(255,255,255,0.08)' },
         },
         y: {
           grace: '18%',
           ticks: {
-            color: '#94a3b8',
-            font: { family: "'IBM Plex Sans', sans-serif", size: 10 },
+            color: '#98989f',
+            font: { family: SYSTEM_FONT_STACK, size: 10 },
             callback: (v) =>
               '$' + (Math.abs(v) >= 1000 ? (v / 1000).toFixed(1) + 'k' : String(v.toFixed(0))),
             padding: 6,
           },
-          grid: { color: 'rgba(30,41,59,0.8)' },
-          border: { color: '#1e293b' },
+          grid: { color: 'rgba(255,255,255,0.06)' },
+          border: { color: 'rgba(255,255,255,0.08)' },
         },
         yPct: {
           grace: '18%',
           position: 'right',
           ticks: {
-            color: '#a78bfa',
-            font: { family: "'IBM Plex Sans', sans-serif", size: 10 },
+            color: '#bf5af2',
+            font: { family: SYSTEM_FONT_STACK, size: 10 },
             callback: (v) => formatPercent(v, { decimals: 0, signed: true }),
             padding: 6,
           },
           grid: { drawOnChartArea: false },
-          border: { color: '#1e293b' },
+          border: { color: 'rgba(255,255,255,0.08)' },
         },
       },
     },
@@ -1580,10 +1582,10 @@ function attachEventListeners() {
     renderStepDetailsAndTrades();
     const orig = els.saveConfigBtn.textContent;
     els.saveConfigBtn.textContent = 'Saved ✓';
-    els.saveConfigBtn.classList.replace('bg-emerald-500', 'bg-emerald-700');
+    els.saveConfigBtn.classList.replace('bg-ios-blue', 'bg-ios-green');
     setTimeout(() => {
       els.saveConfigBtn.textContent = orig;
-      els.saveConfigBtn.classList.replace('bg-emerald-700', 'bg-emerald-500');
+      els.saveConfigBtn.classList.replace('bg-ios-green', 'bg-ios-blue');
     }, 1400);
   });
 
@@ -1617,8 +1619,8 @@ function attachEventListeners() {
       const total = state.assets.reduce((s, a) => s + (Number(a.allocation) || 0), 0);
       els.allocationTotal.textContent = `${total.toFixed(1)}%`;
       els.allocationTotal.className =
-        'text-xs font-semibold ' +
-        (Math.abs(total - 100) < 0.01 ? 'text-emerald-300' : 'text-amber-300');
+        'text-[13px] font-semibold ' +
+        (Math.abs(total - 100) < 0.01 ? 'text-ios-green' : 'text-ios-orange');
     } else if (field === 'units' && !_hasHistory) {
       asset.units = Math.max(0, Number(target.value) || 0);
       // Surgically update the value cell and unrealized-P&L cell so we don't
@@ -1785,10 +1787,8 @@ function attachEventListeners() {
     document.querySelectorAll('.chart-res-btn').forEach((b) => {
       const isActive = b.dataset.res === active;
       b.className =
-        'chart-res-btn text-[10px] px-2 py-0.5 rounded border transition-colors ' +
-        (isActive
-          ? 'border-slate-500 text-slate-200 bg-slate-800'
-          : 'border-slate-700 text-slate-500 hover:text-slate-300');
+        'chart-res-btn text-[12px] font-medium px-2.5 py-1 rounded-md transition-colors ' +
+        (isActive ? 'bg-white/15 text-white' : 'text-ios-label2');
     });
   }
   applyResolutionBtn(_chartResolution);
