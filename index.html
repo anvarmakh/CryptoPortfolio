@@ -2,16 +2,49 @@
 <html lang="en">
 <head>
   <meta charset="UTF-8" />
-  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover" />
   <title>Value Averaging Planner</title>
   <link rel="icon" type="image/svg+xml" href="./favicon.svg" />
+  <link rel="apple-touch-icon" href="./favicon.svg" />
+  <meta name="theme-color" content="#000000" />
+  <meta name="apple-mobile-web-app-capable" content="yes" />
+  <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
+  <meta name="apple-mobile-web-app-title" content="VA Planner" />
   <script src="https://cdn.tailwindcss.com"></script>
   <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.4/dist/chart.umd.min.js"></script>
-  <link rel="preconnect" href="https://fonts.googleapis.com">
-  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-  <link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Sans:wght@400;500;600;700&display=swap" rel="stylesheet">
+  <script>
+    tailwind.config = {
+      theme: {
+        extend: {
+          colors: {
+            ios: {
+              bg: '#000000',
+              card: '#1c1c1e',
+              card2: '#2c2c2e',
+              card3: '#3a3a3c',
+              sep: 'rgba(255,255,255,0.09)',
+              label: '#ffffff',
+              label2: '#98989f',
+              label3: '#636366',
+              blue: '#0a84ff',
+              green: '#30d158',
+              red: '#ff453a',
+              orange: '#ff9f0a',
+              purple: '#bf5af2',
+              yellow: '#ffd60a',
+            },
+          },
+        },
+      },
+    };
+  </script>
   <style>
-    body { font-family: 'IBM Plex Sans', system-ui, -apple-system, sans-serif; }
+    body {
+      font-family: -apple-system, BlinkMacSystemFont, 'SF Pro Text', 'Segoe UI', Roboto, sans-serif;
+      font-variant-numeric: tabular-nums;
+      padding-top: env(safe-area-inset-top);
+      padding-bottom: env(safe-area-inset-bottom);
+    }
     .number-input::-webkit-outer-spin-button,
     .number-input::-webkit-inner-spin-button { -webkit-appearance: none; margin: 0; }
     .number-input { -moz-appearance: textfield; }
@@ -19,92 +52,89 @@
     details > summary::-webkit-details-marker { display: none; }
     details[open] > summary .chevron { transform: rotate(180deg); }
     .chevron { transition: transform 0.2s; }
-    #toast { transition: opacity 0.35s; }
+    #toast { transition: opacity 0.35s, transform 0.35s; }
   </style>
 </head>
-<body class="bg-slate-950 text-slate-50 min-h-screen">
+<body class="bg-ios-bg text-ios-label min-h-screen">
 
   <!-- Toast -->
-  <div id="toast" class="fixed bottom-4 left-4 right-4 sm:bottom-6 sm:right-6 sm:left-auto sm:max-w-sm
-                         z-50 opacity-0 pointer-events-none bg-slate-800 border border-slate-700
-                         text-slate-200 text-xs rounded-xl px-4 py-3 shadow-2xl leading-relaxed">
+  <div id="toast" class="fixed bottom-6 left-1/2 -translate-x-1/2 w-[calc(100%-2rem)] max-w-sm
+                         z-50 opacity-0 pointer-events-none bg-ios-card2/95 backdrop-blur
+                         text-white text-[13px] rounded-2xl px-4 py-3 shadow-2xl leading-relaxed
+                         text-center">
     <div id="toastMsg"></div>
   </div>
 
-  <div class="max-w-6xl mx-auto px-4 py-5 sm:py-8 space-y-4 sm:space-y-5">
+  <div class="max-w-6xl mx-auto px-4 py-5 sm:py-8 space-y-3 sm:space-y-4">
 
     <!-- ─── HEADER ─────────────────────────────────────────────── -->
-    <header class="flex items-center justify-between gap-3">
+    <header class="flex items-end justify-between gap-3 px-1 pb-1">
       <div>
-        <h1 class="text-base font-semibold text-slate-100 tracking-tight">Value Averaging Planner</h1>
-        <p id="lastUpdated" class="text-[11px] text-slate-500 mt-0.5">Prices not yet loaded · refresh to start</p>
+        <h1 class="text-[28px] sm:text-[32px] font-bold text-white tracking-tight leading-none">Planner</h1>
+        <p id="lastUpdated" class="text-[13px] text-ios-label2 mt-1.5">Prices not yet loaded · refresh to start</p>
       </div>
       <div class="flex items-center gap-3 shrink-0">
         <button id="resetAllBtn"
-                class="text-[11px] text-slate-600 hover:text-rose-400 transition-colors px-2 py-1 rounded hover:bg-rose-500/10">
-          Reset all
+                class="text-[13px] text-ios-red/80 hover:text-ios-red transition-colors px-2 py-1 rounded-lg active:bg-ios-red/10">
+          Reset
         </button>
       </div>
     </header>
 
-    <!-- ─── STATS: 3 CARDS ────────────────────────────────────── -->
-    <section class="grid grid-cols-3 gap-2 sm:gap-3">
+    <!-- ─── HERO: portfolio value ─────────────────────────────── -->
+    <section class="space-y-3">
 
-      <!-- Card 1: Recommended action -->
-      <div class="rounded-xl border border-slate-800 bg-slate-900/60 px-3 py-3 sm:px-4 sm:py-3.5">
-        <div class="text-[9px] sm:text-[10px] text-slate-500 uppercase tracking-wider mb-1.5">
-          Period <span id="heroPeriod">—</span>
-        </div>
-        <div id="heroDirectionBadge" class="text-xs sm:text-sm font-bold text-slate-400">—</div>
-        <div id="heroAmount" class="text-sm sm:text-xl font-bold tracking-tight text-slate-400 mt-0.5">—</div>
-      </div>
-
-      <!-- Card 2: Portfolio + Invested -->
-      <div class="rounded-xl border border-slate-800 bg-slate-900/60 px-3 py-3 sm:px-4 sm:py-3.5">
-        <div class="text-[9px] sm:text-[10px] text-slate-500 uppercase tracking-wider mb-1.5">Portfolio</div>
-        <div id="statPortfolioValue" class="text-sm sm:text-xl font-bold">$0</div>
-        <div class="text-[9px] sm:text-[10px] text-slate-500 mt-1">
-          Invested: <span id="statInvested" class="text-slate-400 font-medium">$0</span>
+      <!-- Portfolio value card -->
+      <div class="rounded-2xl bg-ios-card px-5 py-5">
+        <div class="text-[13px] text-ios-label2">Portfolio Value</div>
+        <div id="statPortfolioValue" class="text-[36px] sm:text-[40px] leading-tight font-bold text-white tracking-tight mt-0.5">$0</div>
+        <div class="flex items-center gap-2 mt-2.5 flex-wrap">
+          <span class="inline-flex items-center gap-1.5 rounded-full px-3 py-1 bg-white/[0.06]">
+            <span id="statPnL" class="text-[14px] font-semibold text-white">$0</span>
+            <span id="statPnLPct" class="text-[14px] font-semibold text-ios-label2">0.00%</span>
+          </span>
+          <span class="text-[13px] text-ios-label2">Invested&nbsp;<span id="statInvested" class="text-white font-medium">$0</span></span>
         </div>
       </div>
 
-      <!-- Card 3: P&L -->
-      <div class="rounded-xl border border-slate-800 bg-slate-900/60 px-3 py-3 sm:px-4 sm:py-3.5">
-        <div class="text-[9px] sm:text-[10px] text-slate-500 uppercase tracking-wider mb-1.5">P&amp;L</div>
-        <div id="statPnL" class="text-sm sm:text-xl font-bold text-slate-200">$0</div>
-        <div id="statPnLPct" class="text-[10px] sm:text-xs font-semibold text-slate-400 mt-0.5">0.00%</div>
+      <!-- Next action card -->
+      <div class="rounded-2xl bg-ios-card px-5 py-4 flex items-center justify-between gap-3">
+        <div>
+          <div class="text-[12px] text-ios-label2">Period <span id="heroPeriod">—</span> · recommended action</div>
+          <div id="heroDirectionBadge" class="text-[15px] font-semibold text-ios-label2 mt-1">—</div>
+        </div>
+        <div id="heroAmount" class="text-[22px] font-bold text-ios-label2 tracking-tight">—</div>
       </div>
-
     </section>
 
     <!-- Step error / warning (shown when config is missing or allocation off) -->
     <div id="stepError"
-         class="hidden text-xs text-amber-300 bg-amber-500/10 border border-amber-500/30
-                rounded-xl px-4 py-2.5 leading-relaxed">
+         class="hidden text-[13px] text-ios-orange bg-ios-orange/10
+                rounded-2xl px-4 py-3 leading-relaxed">
     </div>
 
     <!-- ─── HOLDINGS + TRADES ─────────────────────────────────── -->
-    <section class="grid grid-cols-1 gap-5">
+    <section class="grid grid-cols-1 gap-4">
 
       <!-- Holdings -->
-      <div class="rounded-2xl border border-slate-800 bg-slate-900/80 p-4 sm:p-5 space-y-4">
+      <div class="rounded-2xl bg-ios-card p-4 sm:p-5 space-y-4">
         <div class="flex items-center justify-between gap-3 flex-wrap">
-          <h2 class="text-sm font-semibold text-slate-200">Holdings</h2>
+          <h2 class="text-[17px] font-semibold text-white">Holdings</h2>
           <div class="flex items-center gap-2 flex-wrap">
-            <span class="text-[11px] text-slate-500">Alloc total:</span>
-            <span id="allocationTotal" class="text-xs font-bold text-amber-300">0%</span>
+            <span class="text-[12px] text-ios-label2">Alloc total:</span>
+            <span id="allocationTotal" class="text-[13px] font-semibold text-ios-orange">0%</span>
             <button id="refreshPricesBtn"
-                    class="text-[11px] px-2 py-1 rounded-lg border border-slate-700 text-slate-400
-                           hover:text-emerald-300 hover:border-emerald-800 transition-colors">
+                    class="text-[12px] font-medium px-2.5 py-1 rounded-lg bg-ios-blue/12 text-ios-blue
+                           active:bg-ios-blue/20 transition-colors">
               ↻ Refresh
             </button>
           </div>
         </div>
 
-        <div class="overflow-x-auto">
-          <table class="w-full text-xs align-middle">
+        <div class="overflow-x-auto -mx-1 px-1">
+          <table class="w-full text-[13px] align-middle">
             <thead>
-              <tr class="border-b border-slate-800 text-slate-500 text-[10px] uppercase tracking-wider">
+              <tr class="border-b border-ios-sep text-ios-label2 text-[11px] uppercase tracking-wide">
                 <th class="pb-2 pr-2 text-left font-medium">Ticker</th>
                 <th class="pb-2 px-2 text-right font-medium">Target %</th>
                 <th class="pb-2 px-2 text-right font-medium hidden sm:table-cell">Units</th>
@@ -116,28 +146,28 @@
                 <th class="pb-2 pl-2"></th>
               </tr>
             </thead>
-            <tbody id="assetsTableBody" class="divide-y divide-slate-800/60">
+            <tbody id="assetsTableBody" class="divide-y divide-ios-sep">
               <!-- JS rendered -->
             </tbody>
           </table>
         </div>
 
         <div id="pricesFetchStatus"
-             class="hidden text-[11px] text-amber-300 bg-amber-500/10 border border-amber-500/30
-                    rounded-xl px-3 py-2 leading-relaxed">
+             class="hidden text-[12px] text-ios-orange bg-ios-orange/10
+                    rounded-2xl px-3 py-2.5 leading-relaxed">
         </div>
       </div>
 
       <!-- Suggested Trades -->
-      <div class="rounded-2xl border border-slate-800 bg-slate-900/80 p-4 sm:p-5 space-y-4">
+      <div class="rounded-2xl bg-ios-card p-4 sm:p-5 space-y-4">
         <div class="flex items-center justify-between gap-3">
           <div>
-            <h2 class="text-sm font-semibold text-slate-200">Suggested trades</h2>
-            <p class="text-[11px] text-slate-500 mt-0.5">Rebalance to target allocation after step</p>
+            <h2 class="text-[17px] font-semibold text-white">Suggested trades</h2>
+            <p class="text-[12px] text-ios-label2 mt-0.5">Rebalance to target allocation after step</p>
           </div>
           <button id="addAssetBtn"
-                  class="text-[11px] px-2 py-1 rounded-lg border border-slate-700 text-slate-400
-                         hover:text-slate-200 hover:border-slate-500 transition-colors shrink-0">
+                  class="text-[12px] font-medium px-2.5 py-1 rounded-lg bg-ios-blue/12 text-ios-blue
+                         active:bg-ios-blue/20 transition-colors shrink-0">
             + Add asset
           </button>
         </div>
@@ -148,16 +178,16 @@
           <div class="lg:flex-1">
             <!-- Empty / hold state -->
             <div id="tradesEmpty" class="py-8 text-center">
-              <div class="text-slate-600 text-2xl mb-2">–</div>
-              <div class="text-xs text-slate-500">No trades needed</div>
-              <div class="text-[11px] text-slate-600 mt-1">Portfolio is on target</div>
+              <div class="text-ios-label3 text-2xl mb-2">–</div>
+              <div class="text-[13px] text-ios-label2">No trades needed</div>
+              <div class="text-[12px] text-ios-label3 mt-1">Portfolio is on target</div>
             </div>
 
             <!-- Active trades -->
             <div id="tradesContent" class="hidden overflow-x-auto">
-              <table class="w-full text-xs align-middle">
+              <table class="w-full text-[13px] align-middle">
                 <thead>
-                  <tr class="border-b border-slate-800 text-slate-500 text-[10px] uppercase tracking-wider">
+                  <tr class="border-b border-ios-sep text-ios-label2 text-[11px] uppercase tracking-wide">
                     <th class="pb-2 pr-2 text-left font-medium">Asset</th>
                     <th class="pb-2 px-2 text-center font-medium">Action</th>
                     <th class="pb-2 px-2 text-right font-medium">Amount</th>
@@ -165,7 +195,7 @@
                     <th class="pb-2 pl-2 text-right font-medium">Units</th>
                   </tr>
                 </thead>
-                <tbody id="tradesTableBody" class="divide-y divide-slate-800/60">
+                <tbody id="tradesTableBody" class="divide-y divide-ios-sep">
                   <!-- JS rendered -->
                 </tbody>
               </table>
@@ -173,56 +203,56 @@
           </div>
 
           <!-- Right: step summary + action buttons -->
-          <div class="mt-4 pt-3 border-t border-slate-800 space-y-4
+          <div class="mt-4 pt-3 border-t border-ios-sep space-y-4
                       lg:mt-0 lg:pt-0 lg:border-t-0 lg:border-l lg:pl-5 lg:w-64 lg:shrink-0">
             <!-- Step summary -->
-            <div id="tradesSummary" class="hidden space-y-1.5 text-[11px]">
+            <div id="tradesSummary" class="hidden space-y-1.5 text-[12px]">
               <div class="flex justify-between font-medium">
-                <span id="stepTotalLabel" class="text-slate-400">Net to invest</span>
-                <span id="stepTotalSuggested" class="text-emerald-300">$0</span>
+                <span id="stepTotalLabel" class="text-ios-label2">Net to invest</span>
+                <span id="stepTotalSuggested" class="text-ios-green">$0</span>
               </div>
-              <div class="flex justify-between text-slate-400">
+              <div class="flex justify-between text-ios-label2">
                 <span>Current portfolio</span>
-                <span id="stepCurrentValue" class="text-slate-200 font-medium">$0</span>
+                <span id="stepCurrentValue" class="text-white font-medium">$0</span>
               </div>
-              <div class="flex justify-between text-slate-400">
+              <div class="flex justify-between text-ios-label2">
                 <span>Period target</span>
-                <span id="stepTargetValue" class="text-slate-200 font-medium">$0</span>
+                <span id="stepTargetValue" class="text-white font-medium">$0</span>
               </div>
-              <div class="flex justify-between text-slate-400">
+              <div class="flex justify-between text-ios-label2">
                 <span>Post-step total</span>
-                <span id="stepEffectiveTarget" class="text-slate-200 font-medium">$0</span>
+                <span id="stepEffectiveTarget" class="text-white font-medium">$0</span>
               </div>
-              <div id="stepCapNote" class="hidden text-[10px] text-amber-400/80 leading-relaxed"></div>
-              <div id="stepFilterNote" class="hidden text-[10px] text-slate-500 leading-relaxed"></div>
-              <div class="flex justify-between items-baseline text-slate-400">
+              <div id="stepCapNote" class="hidden text-[11px] text-ios-orange/90 leading-relaxed"></div>
+              <div id="stepFilterNote" class="hidden text-[11px] text-ios-label2 leading-relaxed"></div>
+              <div class="flex justify-between items-baseline text-ios-label2">
                 <span>Invested after step</span>
                 <span class="text-right">
-                  <span id="stepEstimatedInvested" class="text-slate-200 font-medium">$0</span>
-                  <span id="stepEstimatedBreakdown" class="block text-[10px] text-slate-600 font-normal"></span>
+                  <span id="stepEstimatedInvested" class="text-white font-medium">$0</span>
+                  <span id="stepEstimatedBreakdown" class="block text-[11px] text-ios-label3 font-normal"></span>
                 </span>
               </div>
             </div>
 
             <!-- Action buttons -->
-            <div class="pt-3 border-t border-slate-800 flex flex-col gap-2">
+            <div class="pt-3 border-t border-ios-sep flex flex-col gap-2">
               <button id="trackCurrentStateBtn"
-                      class="hidden w-full px-4 py-2.5 min-h-[40px] rounded-xl
-                             bg-sky-500 text-slate-950 text-sm font-bold
-                             hover:bg-sky-400 active:scale-[0.97] transition-all">
-                ◎ Track current state
+                      class="hidden w-full px-4 py-3 min-h-[44px] rounded-xl
+                             bg-ios-blue text-white text-[15px] font-semibold
+                             active:opacity-70 transition-opacity">
+                Track current state
               </button>
               <button id="applyStepBtn"
-                      class="w-full px-4 py-2.5 min-h-[40px] rounded-xl
-                             bg-emerald-500 text-slate-950 text-sm font-bold
-                             hover:bg-emerald-400 active:scale-[0.97] transition-all">
-                ✓ Mark step applied
+                      class="w-full px-4 py-3 min-h-[44px] rounded-xl
+                             bg-ios-green text-white text-[15px] font-semibold
+                             active:opacity-70 transition-opacity">
+                Mark step applied
               </button>
-              <p id="stepHint" class="hidden text-[10px] text-slate-600 leading-relaxed">
+              <p id="stepHint" class="hidden text-[11px] text-ios-label3 leading-relaxed">
                 Suggested units are pre-filled (positive = buy, negative = sell). Adjust to match
                 what you actually traded, then mark step applied.
               </p>
-              <p id="trackHint" class="hidden text-[10px] text-slate-600 leading-relaxed">
+              <p id="trackHint" class="hidden text-[11px] text-ios-label3 leading-relaxed">
                 No snapshots yet. Track current state before applying your first step.
               </p>
             </div>
@@ -235,29 +265,29 @@
     </section>
 
     <!-- ─── HISTORY ────────────────────────────────────────────── -->
-    <section class="rounded-2xl border border-slate-800 bg-slate-900/80 overflow-hidden">
-      <div class="px-5 py-4 flex items-center justify-between border-b border-slate-800">
+    <section class="rounded-2xl bg-ios-card overflow-hidden">
+      <div class="px-5 py-4 flex items-center justify-between border-b border-ios-sep">
         <div>
-          <h2 class="text-sm font-semibold text-slate-200">History</h2>
-          <p class="text-[11px] text-slate-500 mt-0.5">Snapshot saved each time you mark a step applied</p>
+          <h2 class="text-[17px] font-semibold text-white">History</h2>
+          <p class="text-[12px] text-ios-label2 mt-0.5">Snapshot saved each time you mark a step applied</p>
         </div>
         <div class="flex items-center gap-2 shrink-0">
           <button id="exportCsvBtn"
-                  class="text-xs px-3 py-1.5 rounded-lg border border-slate-700 text-slate-400
-                         hover:text-slate-200 hover:border-slate-600 transition-colors">
+                  class="text-[12px] font-medium px-3 py-1.5 rounded-lg bg-white/[0.06] text-ios-label2
+                         active:bg-white/10 transition-colors">
             ↓ CSV
           </button>
         </div>
       </div>
       <div class="px-5 py-4">
         <div id="historyError"
-             class="hidden text-xs text-rose-400 bg-rose-500/10 border border-rose-500/40
-                    rounded-xl px-3 py-2 mb-3 leading-relaxed">
+             class="hidden text-[13px] text-ios-red bg-ios-red/10
+                    rounded-2xl px-3 py-2.5 mb-3 leading-relaxed">
         </div>
         <div class="overflow-x-auto">
-          <table class="w-full text-xs align-middle">
+          <table class="w-full text-[13px] align-middle">
             <thead>
-              <tr class="border-b border-slate-800 text-slate-500 text-[10px] uppercase tracking-wider">
+              <tr class="border-b border-ios-sep text-ios-label2 text-[11px] uppercase tracking-wide">
                 <th class="pb-2 pr-4 text-left font-medium">Date</th>
                 <th class="pb-2 px-2 text-right font-medium">Period</th>
                 <th class="pb-2 px-2 text-right font-medium">Invested</th>
@@ -267,52 +297,52 @@
                 <th class="pb-2 pl-2"></th>
               </tr>
             </thead>
-            <tbody id="historyTableBody" class="divide-y divide-slate-800/60">
+            <tbody id="historyTableBody" class="divide-y divide-ios-sep">
               <!-- JS rendered -->
             </tbody>
           </table>
         </div>
 
         <!-- Analytics summary (shown when history has data) -->
-        <div id="historyAnalytics" class="hidden grid grid-cols-2 sm:grid-cols-4 gap-2 mt-4 pt-4 border-t border-slate-800">
-          <div class="rounded-xl bg-slate-800/50 px-3 py-2.5">
-            <div class="text-[10px] text-slate-500 uppercase tracking-wider">Periods</div>
-            <div id="analyticsPeriodsCount" class="text-sm font-bold text-slate-200 mt-0.5">—</div>
+        <div id="historyAnalytics" class="hidden grid grid-cols-2 sm:grid-cols-4 gap-2 mt-4 pt-4 border-t border-ios-sep">
+          <div class="rounded-xl bg-ios-card2 px-3 py-2.5">
+            <div class="text-[11px] text-ios-label2">Periods</div>
+            <div id="analyticsPeriodsCount" class="text-[15px] font-bold text-white mt-0.5">—</div>
           </div>
-          <div class="rounded-xl bg-slate-800/50 px-3 py-2.5">
-            <div class="text-[10px] text-slate-500 uppercase tracking-wider">Total return</div>
-            <div id="analyticsTotalReturn" class="text-sm font-bold text-slate-200 mt-0.5">—</div>
+          <div class="rounded-xl bg-ios-card2 px-3 py-2.5">
+            <div class="text-[11px] text-ios-label2">Total return</div>
+            <div id="analyticsTotalReturn" class="text-[15px] font-bold text-white mt-0.5">—</div>
           </div>
-          <div class="rounded-xl bg-slate-800/50 px-3 py-2.5">
-            <div class="text-[10px] text-slate-500 uppercase tracking-wider">Best period ↑</div>
-            <div id="analyticsBestPeriod" class="text-sm font-bold text-emerald-300 mt-0.5">—</div>
+          <div class="rounded-xl bg-ios-card2 px-3 py-2.5">
+            <div class="text-[11px] text-ios-label2">Best period ↑</div>
+            <div id="analyticsBestPeriod" class="text-[15px] font-bold text-ios-green mt-0.5">—</div>
           </div>
-          <div class="rounded-xl bg-slate-800/50 px-3 py-2.5">
-            <div class="text-[10px] text-slate-500 uppercase tracking-wider">Worst period ↓</div>
-            <div id="analyticsWorstPeriod" class="text-sm font-bold text-rose-300 mt-0.5">—</div>
+          <div class="rounded-xl bg-ios-card2 px-3 py-2.5">
+            <div class="text-[11px] text-ios-label2">Worst period ↓</div>
+            <div id="analyticsWorstPeriod" class="text-[15px] font-bold text-ios-red mt-0.5">—</div>
           </div>
         </div>
 
         <!-- Performance chart (shown when 2+ price snapshots exist) -->
-        <div id="historyChartWrap" class="hidden mt-4 pt-4 border-t border-slate-800">
-          <div class="flex items-center justify-between mb-3">
-            <div class="text-[10px] text-slate-500 uppercase tracking-wider">Portfolio vs Invested vs P&amp;L %</div>
-            <div class="flex items-center gap-1">
-              <button data-res="7d"  class="chart-res-btn text-[10px] px-2 py-0.5 rounded border border-slate-700 text-slate-500 hover:text-slate-300 transition-colors">7d</button>
-              <button data-res="30d" class="chart-res-btn text-[10px] px-2 py-0.5 rounded border border-slate-700 text-slate-500 hover:text-slate-300 transition-colors">30d</button>
-              <button data-res="90d" class="chart-res-btn text-[10px] px-2 py-0.5 rounded border border-slate-700 text-slate-500 hover:text-slate-300 transition-colors">90d</button>
-              <button data-res="all" class="chart-res-btn text-[10px] px-2 py-0.5 rounded border border-slate-700 text-slate-500 hover:text-slate-300 transition-colors">All</button>
+        <div id="historyChartWrap" class="hidden mt-4 pt-4 border-t border-ios-sep">
+          <div class="flex items-center justify-between mb-3 gap-3">
+            <div class="text-[11px] text-ios-label2 uppercase tracking-wide">Portfolio vs Invested vs P&amp;L %</div>
+            <div class="inline-flex items-center gap-0.5 bg-ios-card2 rounded-lg p-0.5 shrink-0">
+              <button data-res="7d"  class="chart-res-btn text-[12px] font-medium px-2.5 py-1 rounded-md transition-colors bg-white/15 text-white">7d</button>
+              <button data-res="30d" class="chart-res-btn text-[12px] font-medium px-2.5 py-1 rounded-md transition-colors text-ios-label2">30d</button>
+              <button data-res="90d" class="chart-res-btn text-[12px] font-medium px-2.5 py-1 rounded-md transition-colors text-ios-label2">90d</button>
+              <button data-res="all" class="chart-res-btn text-[12px] font-medium px-2.5 py-1 rounded-md transition-colors text-ios-label2">All</button>
             </div>
           </div>
           <div class="relative h-[220px] sm:h-[320px] lg:h-[400px]">
             <canvas id="historyChart"></canvas>
           </div>
-          <div id="chartSourceHint" class="hidden text-[10px] text-amber-400/70 mt-1"></div>
-          <div class="mt-2 flex items-center gap-3 text-[10px] text-slate-600">
-            <span class="flex items-center gap-1"><span style="display:inline-block;width:10px;height:2px;background:#34d399"></span> Portfolio</span>
-            <span class="flex items-center gap-1"><span style="display:inline-block;width:10px;height:2px;background:#38bdf8"></span> Invested</span>
-            <span class="flex items-center gap-1"><span style="display:inline-block;width:0;height:0;border-left:5px solid transparent;border-right:5px solid transparent;border-bottom:8px solid #f59e0b"></span> Step applied</span>
-            <span class="flex items-center gap-1"><span style="display:inline-block;width:10px;height:2px;background:#a78bfa"></span> P&amp;L %</span>
+          <div id="chartSourceHint" class="hidden text-[11px] text-ios-orange/80 mt-1"></div>
+          <div class="mt-2 flex items-center gap-3 text-[11px] text-ios-label3 flex-wrap">
+            <span class="flex items-center gap-1"><span style="display:inline-block;width:10px;height:2px;background:#30d158"></span> Portfolio</span>
+            <span class="flex items-center gap-1"><span style="display:inline-block;width:10px;height:2px;background:#0a84ff"></span> Invested</span>
+            <span class="flex items-center gap-1"><span style="display:inline-block;width:0;height:0;border-left:5px solid transparent;border-right:5px solid transparent;border-bottom:8px solid #ff9f0a"></span> Step applied</span>
+            <span class="flex items-center gap-1"><span style="display:inline-block;width:10px;height:2px;background:#bf5af2"></span> P&amp;L %</span>
           </div>
         </div>
 
@@ -320,209 +350,188 @@
     </section>
 
     <!-- ─── SETTINGS ──────────────────────────────────────────── -->
-    <details id="settingsPanel" class="rounded-2xl border border-slate-800 bg-slate-900/80 overflow-hidden">
+    <details id="settingsPanel" class="rounded-2xl bg-ios-card overflow-hidden">
       <summary class="px-5 py-4 flex items-center justify-between cursor-pointer select-none
-                      hover:bg-slate-800/30 transition-colors">
+                      active:bg-white/[0.04] transition-colors">
         <div>
-          <h2 class="text-sm font-semibold text-slate-200">Plan settings</h2>
-          <p class="text-[11px] text-slate-500 mt-0.5">Value-averaging parameters · saved to browser</p>
+          <h2 class="text-[17px] font-semibold text-white">Plan settings</h2>
+          <p class="text-[12px] text-ios-label2 mt-0.5">Value-averaging parameters · saved to browser</p>
         </div>
         <div class="flex items-center gap-3">
           <button id="saveConfigBtn"
-                  class="text-xs px-3 py-1.5 rounded-lg bg-emerald-500 text-slate-950 font-semibold
-                         hover:bg-emerald-400 transition-colors"
+                  class="text-[13px] font-semibold px-3.5 py-1.5 rounded-lg bg-ios-blue text-white
+                         active:opacity-70 transition-opacity"
                   onclick="event.stopPropagation()">
             Save
           </button>
-          <svg class="chevron w-4 h-4 text-slate-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+          <svg class="chevron w-4 h-4 text-ios-label3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
             <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 9l-7 7-7-7"/>
           </svg>
         </div>
       </summary>
 
-      <div class="px-5 pb-6 space-y-6 border-t border-slate-800 pt-5">
+      <div class="px-5 pb-6 space-y-6 border-t border-ios-sep pt-5">
 
         <!-- ── SECTION 1: Starting point ────────────────────────── -->
-        <div class="space-y-4">
-          <div>
-            <h3 class="text-xs font-semibold text-slate-300 uppercase tracking-wider">Starting point</h3>
-            <p class="text-[11px] text-slate-500 mt-1 leading-relaxed">
-              Set these once when you start (or import an existing plan).
-              The app will track both values automatically from this baseline.
-            </p>
-          </div>
+        <div class="space-y-2">
+          <h3 class="text-[13px] font-medium text-ios-label2 uppercase tracking-wide px-1">Starting point</h3>
 
-          <div class="grid md:grid-cols-2 gap-4">
-            <label class="block">
-              <span class="text-xs font-medium text-slate-300">Initial target value (USD)</span>
-              <input id="initialValueInput" type="number" step="100"
-                     class="number-input mt-1.5 block w-full rounded-lg border border-slate-700 bg-slate-900
-                            px-3 py-2.5 text-sm text-slate-100 placeholder-slate-600
-                            focus:outline-none focus:ring-2 focus:ring-emerald-500/50 focus:border-emerald-600
-                            transition-colors"
-                     placeholder="e.g. 18 000" />
-              <p class="mt-1 text-[10px] text-slate-500 leading-relaxed">
+          <div class="rounded-2xl bg-ios-card2 divide-y divide-ios-sep px-4">
+            <div class="py-3">
+              <div class="flex items-center justify-between gap-3">
+                <label for="initialValueInput" class="text-[15px] text-white">Initial target value</label>
+                <input id="initialValueInput" type="number" step="100"
+                       class="number-input w-32 text-right bg-transparent text-[15px] text-white
+                              placeholder-ios-label3 focus:outline-none"
+                       placeholder="e.g. 18 000" />
+              </div>
+              <p class="mt-1 text-[11px] text-ios-label3 leading-relaxed">
                 Your portfolio's target value at the start of your plan.
                 Future period targets are calculated from here: <em>Target(N) = this + N × step size</em>.
               </p>
-            </label>
+            </div>
 
-            <label class="block">
-              <span class="text-xs font-medium text-slate-300">Total invested to date (USD)</span>
-              <input id="investedSoFarInput" type="number" step="100"
-                     class="number-input mt-1.5 block w-full rounded-lg border border-slate-700 bg-slate-900
-                            px-3 py-2.5 text-sm text-slate-100 placeholder-slate-600
-                            focus:outline-none focus:ring-2 focus:ring-emerald-500/50 focus:border-emerald-600
-                            transition-colors"
-                     placeholder="e.g. 27 000" />
-              <p class="mt-1 text-[10px] text-slate-500 leading-relaxed">
+            <div class="py-3">
+              <div class="flex items-center justify-between gap-3">
+                <label for="investedSoFarInput" class="text-[15px] text-white">Total invested to date</label>
+                <input id="investedSoFarInput" type="number" step="100"
+                       class="number-input w-32 text-right bg-transparent text-[15px] text-white
+                              placeholder-ios-label3 focus:outline-none"
+                       placeholder="e.g. 27 000" />
+              </div>
+              <p class="mt-1 text-[11px] text-ios-label3 leading-relaxed">
                 Total cash you have invested so far across all periods.
                 Auto-updated each time you mark a step applied — only set this manually when importing an existing plan.
               </p>
-            </label>
+            </div>
           </div>
         </div>
 
-        <!-- divider -->
-        <div class="border-t border-slate-800"></div>
-
         <!-- ── SECTION 2: Plan parameters ────────────────────────── -->
-        <div class="space-y-4">
-          <div>
-            <h3 class="text-xs font-semibold text-slate-300 uppercase tracking-wider">Plan parameters</h3>
-            <p class="text-[11px] text-slate-500 mt-1">
-              How the target grows each period and how aggressively to act on gaps.
-            </p>
-          </div>
+        <div class="space-y-2">
+          <h3 class="text-[13px] font-medium text-ios-label2 uppercase tracking-wide px-1">Plan parameters</h3>
 
-          <div class="grid md:grid-cols-2 gap-4">
-            <label class="block">
-              <span class="text-xs font-medium text-slate-300">Step size (USD / period)</span>
-              <input id="stepInput" type="number" step="100"
-                     class="number-input mt-1.5 block w-full rounded-lg border border-slate-700 bg-slate-900
-                            px-3 py-2.5 text-sm text-slate-100 placeholder-slate-600
-                            focus:outline-none focus:ring-2 focus:ring-emerald-500/50 focus:border-emerald-600
-                            transition-colors"
-                     placeholder="e.g. 1 000" />
-              <p class="mt-1 text-[10px] text-slate-500">
+          <div class="rounded-2xl bg-ios-card2 divide-y divide-ios-sep px-4">
+            <div class="py-3">
+              <div class="flex items-center justify-between gap-3">
+                <label for="stepInput" class="text-[15px] text-white">Step size (USD / period)</label>
+                <input id="stepInput" type="number" step="100"
+                       class="number-input w-32 text-right bg-transparent text-[15px] text-white
+                              placeholder-ios-label3 focus:outline-none"
+                       placeholder="e.g. 1 000" />
+              </div>
+              <p class="mt-1 text-[11px] text-ios-label3">
                 Target grows by this amount each period. E.g. $1 000/month.
               </p>
-            </label>
+            </div>
 
-            <label class="block">
-              <span class="text-xs font-medium text-slate-300">Max per step ±(USD)</span>
-              <input id="maxAdditionInput" type="number" step="100"
-                     class="number-input mt-1.5 block w-full rounded-lg border border-slate-700 bg-slate-900
-                            px-3 py-2.5 text-sm text-slate-100 placeholder-slate-600
-                            focus:outline-none focus:ring-2 focus:ring-emerald-500/50 focus:border-emerald-600
-                            transition-colors"
-                     placeholder="e.g. 2 000" />
-              <p class="mt-1 text-[10px] text-slate-500">
+            <div class="py-3">
+              <div class="flex items-center justify-between gap-3">
+                <label for="maxAdditionInput" class="text-[15px] text-white">Max per step ±(USD)</label>
+                <input id="maxAdditionInput" type="number" step="100"
+                       class="number-input w-32 text-right bg-transparent text-[15px] text-white
+                              placeholder-ios-label3 focus:outline-none"
+                       placeholder="e.g. 2 000" />
+              </div>
+              <p class="mt-1 text-[11px] text-ios-label3">
                 Caps how much you invest or withdraw in a single step. Leave blank for no cap.
               </p>
-            </label>
+            </div>
 
-            <label class="block md:col-span-2">
-              <span class="text-xs font-medium text-slate-300">Completed periods</span>
-              <input id="completedPeriodsInput" type="number" min="0" step="1"
-                     class="number-input mt-1.5 block w-full rounded-lg border border-slate-700 bg-slate-900
-                            px-3 py-2.5 text-sm text-slate-100 placeholder-slate-600
-                            focus:outline-none focus:ring-2 focus:ring-emerald-500/50 focus:border-emerald-600
-                            transition-colors"
-                     placeholder="0" />
-              <p class="mt-1 text-[10px] text-slate-500">
+            <div class="py-3">
+              <div class="flex items-center justify-between gap-3">
+                <label for="completedPeriodsInput" class="text-[15px] text-white">Completed periods</label>
+                <input id="completedPeriodsInput" type="number" min="0" step="1"
+                       class="number-input w-32 text-right bg-transparent text-[15px] text-white
+                              placeholder-ios-label3 focus:outline-none"
+                       placeholder="0" />
+              </div>
+              <p class="mt-1 text-[11px] text-ios-label3">
                 How many periods you have already completed.
                 Starts at 0 and auto-increments each time you mark a step applied.
                 Set manually if you are importing an existing plan mid-way.
               </p>
-            </label>
+            </div>
           </div>
         </div>
 
-        <!-- divider -->
-        <div class="border-t border-slate-800"></div>
-
         <!-- ── SECTION 3: Efficiency tuning ────────────────────── -->
-        <details class="space-y-4">
-          <summary class="cursor-pointer select-none flex items-center justify-between hover:text-slate-200 transition-colors">
-            <div>
-              <h3 class="text-xs font-semibold text-slate-300 uppercase tracking-wider">Efficiency tuning</h3>
-              <p class="text-[11px] text-slate-500 mt-1 leading-relaxed">
-                Pre-tuned defaults for bi-weekly crypto VA. Expand only if you want
-                to override the bands or dust filter behaviour.
-              </p>
-            </div>
-            <svg class="chevron w-4 h-4 text-slate-600 shrink-0 ml-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+        <details class="space-y-2">
+          <summary class="cursor-pointer select-none flex items-center justify-between px-1">
+            <h3 class="text-[13px] font-medium text-ios-label2 uppercase tracking-wide">Efficiency tuning</h3>
+            <svg class="chevron w-4 h-4 text-ios-label3 shrink-0 ml-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
               <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 9l-7 7-7-7"/>
             </svg>
           </summary>
+          <p class="text-[11px] text-ios-label3 leading-relaxed px-1 -mt-1 mb-2">
+            Pre-tuned defaults for bi-weekly crypto VA. Expand only if you want
+            to override the bands or dust filter behaviour.
+          </p>
 
-          <div class="grid md:grid-cols-2 gap-4">
-            <label class="block">
-              <span class="text-xs font-medium text-slate-300">Minimum trade size (USD)</span>
-              <input id="minTradeSizeInput" type="number" min="0" step="1"
-                     class="number-input mt-1.5 block w-full rounded-lg border border-slate-700 bg-slate-900
-                            px-3 py-2.5 text-sm text-slate-100 placeholder-slate-600
-                            focus:outline-none focus:ring-2 focus:ring-emerald-500/50 focus:border-emerald-600
-                            transition-colors"
-                     placeholder="e.g. 10" />
-              <p class="mt-1 text-[10px] text-slate-500 leading-relaxed">
+          <div class="rounded-2xl bg-ios-card2 divide-y divide-ios-sep px-4">
+            <div class="py-3">
+              <div class="flex items-center justify-between gap-3">
+                <label for="minTradeSizeInput" class="text-[15px] text-white">Minimum trade size (USD)</label>
+                <input id="minTradeSizeInput" type="number" min="0" step="1"
+                       class="number-input w-32 text-right bg-transparent text-[15px] text-white
+                              placeholder-ios-label3 focus:outline-none"
+                       placeholder="e.g. 10" />
+              </div>
+              <p class="mt-1 text-[11px] text-ios-label3 leading-relaxed">
                 Dust filter. Trades whose absolute size falls below this are skipped.
                 Set to 0 to disable.
               </p>
-            </label>
+            </div>
 
-            <label class="block">
-              <span class="text-xs font-medium text-slate-300">No-sell mode</span>
-              <select id="noSellModeInput"
-                      class="number-input mt-1.5 block w-full rounded-lg border border-slate-700 bg-slate-900
-                             px-3 py-2.5 text-sm text-slate-100
-                             focus:outline-none focus:ring-2 focus:ring-emerald-500/50 focus:border-emerald-600
-                             transition-colors">
-                <option value="off">Off — execute both buys and sells</option>
-                <option value="on">On — skip sells on invest / rebalance steps</option>
-              </select>
-              <p class="mt-1 text-[10px] text-slate-500 leading-relaxed">
-                Edleson's recommended variant: hold overweight assets instead of selling.
-                Actual withdraw steps still execute sells as needed.
-              </p>
-            </label>
+            <div class="py-3 flex items-center justify-between gap-3">
+              <div class="min-w-0">
+                <div class="text-[15px] text-white">No-sell mode</div>
+                <p class="mt-1 text-[11px] text-ios-label3 leading-relaxed">
+                  Edleson's recommended variant: hold overweight assets instead of selling.
+                  Actual withdraw steps still execute sells as needed.
+                </p>
+              </div>
+              <label class="relative inline-flex items-center cursor-pointer shrink-0">
+                <input id="noSellModeInput" type="checkbox" class="peer sr-only" />
+                <div class="w-[51px] h-[31px] bg-white/15 rounded-full peer-checked:bg-ios-green transition-colors"></div>
+                <div class="absolute left-[2px] top-[2px] w-[27px] h-[27px] bg-white rounded-full shadow transition-transform peer-checked:translate-x-[20px]"></div>
+              </label>
+            </div>
 
-            <label class="block">
-              <span class="text-xs font-medium text-slate-300">Rebalance band — absolute (pp)</span>
-              <input id="rebalanceAbsBandInput" type="number" min="0" step="0.5"
-                     class="number-input mt-1.5 block w-full rounded-lg border border-slate-700 bg-slate-900
-                            px-3 py-2.5 text-sm text-slate-100 placeholder-slate-600
-                            focus:outline-none focus:ring-2 focus:ring-emerald-500/50 focus:border-emerald-600
-                            transition-colors"
-                     placeholder="e.g. 5" />
-              <p class="mt-1 text-[10px] text-slate-500 leading-relaxed">
+            <div class="py-3">
+              <div class="flex items-center justify-between gap-3">
+                <label for="rebalanceAbsBandInput" class="text-[15px] text-white">Rebalance band — absolute (pp)</label>
+                <input id="rebalanceAbsBandInput" type="number" min="0" step="0.5"
+                       class="number-input w-32 text-right bg-transparent text-[15px] text-white
+                              placeholder-ios-label3 focus:outline-none"
+                       placeholder="e.g. 5" />
+              </div>
+              <p class="mt-1 text-[11px] text-ios-label3 leading-relaxed">
                 Skip drift correction while actual allocation is within this many
                 percentage points of target. 0 disables.
               </p>
-            </label>
+            </div>
 
-            <label class="block">
-              <span class="text-xs font-medium text-slate-300">Rebalance band — relative (%)</span>
-              <input id="rebalanceRelBandInput" type="number" min="0" step="1"
-                     class="number-input mt-1.5 block w-full rounded-lg border border-slate-700 bg-slate-900
-                            px-3 py-2.5 text-sm text-slate-100 placeholder-slate-600
-                            focus:outline-none focus:ring-2 focus:ring-emerald-500/50 focus:border-emerald-600
-                            transition-colors"
-                     placeholder="e.g. 25" />
-              <p class="mt-1 text-[10px] text-slate-500 leading-relaxed">
+            <div class="py-3">
+              <div class="flex items-center justify-between gap-3">
+                <label for="rebalanceRelBandInput" class="text-[15px] text-white">Rebalance band — relative (%)</label>
+                <input id="rebalanceRelBandInput" type="number" min="0" step="1"
+                       class="number-input w-32 text-right bg-transparent text-[15px] text-white
+                              placeholder-ios-label3 focus:outline-none"
+                       placeholder="e.g. 25" />
+              </div>
+              <p class="mt-1 text-[11px] text-ios-label3 leading-relaxed">
                 Additional band, proportional to the asset's target. Classic 5/25 rule:
                 set abs=5, rel=25. Effective band per asset is the larger of the two.
               </p>
-            </label>
-
+            </div>
           </div>
         </details>
 
       </div>
     </details>
 
-    <footer class="text-[10px] text-slate-700 text-center py-1">
+    <footer class="text-[11px] text-ios-label3 text-center py-2">
       Prices via CoinGecko · Config in browser storage · History persisted server-side
     </footer>
 
@@ -531,9 +540,3 @@
   <script src="./main.js"></script>
 </body>
 </html>
-
-
-
-
-
-

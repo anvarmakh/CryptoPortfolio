@@ -1,6 +1,6 @@
 <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 32 32" fill="none">
-  <!-- Dark background matching app's slate-950 theme -->
-  <rect width="32" height="32" rx="6" fill="#0f172a"/>
+  <!-- Dark background matching app's theme -->
+  <rect width="32" height="32" rx="6" fill="#000000"/>
 
   <!-- Gradient fill under chart line -->
   <defs>
