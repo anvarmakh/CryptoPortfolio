@@ -3,7 +3,7 @@
 
 const STORAGE_KEY = 'crypto_value_averaging_state_v1';
 
-const SYSTEM_FONT_STACK = "-apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif";
+const SYSTEM_FONT_STACK = "-apple-system, BlinkMacSystemFont, 'SF Pro Text', 'Segoe UI Variable Display', 'Segoe UI', system-ui, Roboto, 'Helvetica Neue', Arial, sans-serif";
 
 // Efficiency-tuning defaults. Bands follow the classic 5/25 rule: cuts ~80%
 // of churn trades while preserving allocation discipline. Dust $10 because
