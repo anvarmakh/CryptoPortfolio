@@ -291,14 +291,14 @@ function renderAssetsTable() {
     const currentAssetValue = (Number(asset.price) || 0) * (Number(asset.units) || 0);
     const targetPct = Number(asset.allocation) || 0;
 
-    let currentPctCell = '<td data-label="Actual %" class="py-3 px-2 text-right text-ios-label3 whitespace-nowrap">–</td>';
+    let currentPctCell = '<td class="py-3 px-2 text-right text-ios-label3 whitespace-nowrap">–</td>';
     if (totalPortfolioValue > 0 && currentAssetValue > 0) {
       const currentPct = (currentAssetValue / totalPortfolioValue) * 100;
       const drift = Math.abs(currentPct - targetPct);
       const color = drift <= 1 ? 'text-ios-green' : drift <= 5 ? 'text-ios-orange' : 'text-ios-red';
       const driftSign = currentPct >= targetPct ? '+' : '';
       const driftStr = `${driftSign}${(currentPct - targetPct).toFixed(1)}%`;
-      currentPctCell = `<td data-label="Actual %" class="py-3 px-2 text-right whitespace-nowrap">
+      currentPctCell = `<td class="py-3 px-2 text-right whitespace-nowrap">
         <span class="${color} font-medium">${currentPct.toFixed(1)}%</span>
         <span class="text-[10px] text-ios-label3 ml-1">${driftStr}</span>
       </td>`;
@@ -320,8 +320,8 @@ function renderAssetsTable() {
     const unitsNum = Number(asset.units) || 0;
     const unitsDisplay = unitsNum ? unitsNum.toFixed(4) : '–';
     const unitsCell = unitsLocked
-      ? `<td data-label="Units" class="py-3 px-2 text-right text-ios-label2 text-[13px] whitespace-nowrap hidden sm:table-cell cursor-help" title="Units are locked after the first snapshot. Use &quot;Mark step applied&quot; to update holdings.">${unitsDisplay}</td>`
-      : `<td data-label="Units" class="py-3 px-2 text-right whitespace-nowrap hidden sm:table-cell">
+      ? `<td class="py-3 px-2 text-right text-ios-label2 text-[13px] whitespace-nowrap hidden sm:table-cell cursor-help" title="Units are locked after the first snapshot. Use &quot;Mark step applied&quot; to update holdings.">${unitsDisplay}</td>`
+      : `<td class="py-3 px-2 text-right whitespace-nowrap hidden sm:table-cell">
            <input data-index="${index}" data-field="units" type="number" step="0.00000001"
                   class="number-input w-24 rounded-md bg-white/5 px-2 py-1.5 text-[13px] text-right text-white focus:outline-none focus:ring-2 focus:ring-ios-blue/60"
                   value="${escapeAttr(asset.units ?? '')}" />
@@ -336,8 +336,8 @@ function renderAssetsTable() {
     const avgCostDisplay = avgCostNum ? formatUSD(avgCostNum) : '–';
     const avgCostLocked = unitsLocked && avgCostNum > 0;
     const avgCostCell = avgCostLocked
-      ? `<td data-label="Avg Cost" class="py-3 px-2 text-right text-ios-label2 text-[13px] whitespace-nowrap hidden sm:table-cell cursor-help" title="Average cost updates automatically from buys after &quot;Mark step applied&quot;.">${avgCostDisplay}</td>`
-      : `<td data-label="Avg Cost" class="py-3 px-2 text-right whitespace-nowrap hidden sm:table-cell">
+      ? `<td class="py-3 px-2 text-right text-ios-label2 text-[13px] whitespace-nowrap hidden sm:table-cell cursor-help" title="Average cost updates automatically from buys after &quot;Mark step applied&quot;.">${avgCostDisplay}</td>`
+      : `<td class="py-3 px-2 text-right whitespace-nowrap hidden sm:table-cell">
            <input data-index="${index}" data-field="avgCost" type="number" step="0.00000001"
                   class="number-input w-24 rounded-md bg-white/5 px-2 py-1.5 text-[13px] text-right text-white focus:outline-none focus:ring-2 focus:ring-ios-blue/60"
                   value="${escapeAttr(asset.avgCost ?? '')}" placeholder="0.00" />
@@ -345,24 +345,24 @@ function renderAssetsTable() {
 
     tr.innerHTML = `
       ${tickerCell}
-      <td data-label="Target %" class="py-3 px-2 text-right whitespace-nowrap">
+      <td class="py-3 px-2 text-right whitespace-nowrap">
         <input data-index="${index}" data-field="allocation" type="number" step="0.1"
                class="number-input w-20 rounded-md bg-white/5 px-2 py-1.5 text-[13px] text-right text-white focus:outline-none focus:ring-2 focus:ring-ios-blue/60"
                value="${escapeAttr(asset.allocation ?? '')}" />
       </td>
       ${unitsCell}
       ${avgCostCell}
-      <td data-label="Price" class="py-3 px-2 text-right whitespace-nowrap ${asset.price ? 'text-white' : (state.lastPricesFetch ? 'text-ios-orange' : 'text-ios-label3')}">
+      <td class="py-3 px-2 text-right whitespace-nowrap ${asset.price ? 'text-white' : (state.lastPricesFetch ? 'text-ios-orange' : 'text-ios-label3')}">
         ${asset.price
           ? formatUSD(asset.price)
           : (state.lastPricesFetch ? '⚠ no price' : '–')}
       </td>
-      <td data-label="Value" class="py-3 px-2 text-right text-white whitespace-nowrap">
+      <td class="py-3 px-2 text-right text-white whitespace-nowrap">
         ${asset.price && asset.units ? formatUSD(asset.price * asset.units) : '–'}
       </td>
-      <td data-label="Unrealized" class="py-3 px-2 text-right whitespace-nowrap hidden md:table-cell">${computeUnrealizedInnerHtml(asset)}</td>
+      <td class="py-3 px-2 text-right whitespace-nowrap hidden md:table-cell">${computeUnrealizedInnerHtml(asset)}</td>
       ${currentPctCell}
-      <td class="ios-cell-action py-3 pl-2 text-right whitespace-nowrap">
+      <td class="py-3 pl-2 text-right whitespace-nowrap">
         <button data-index="${index}" data-action="remove-asset"
                 class="text-[12px] w-7 h-7 inline-flex items-center justify-center rounded-full bg-white/5 text-ios-label2 active:bg-ios-red/15 active:text-ios-red transition-colors">
           ✕
@@ -719,10 +719,10 @@ function renderStepDetailsAndTrades() {
       <td class="py-3 pr-2 text-white font-medium whitespace-nowrap">
         ${escapeHtml(t.symbol)}
       </td>
-      <td data-label="Action" class="py-3 px-2 text-center whitespace-nowrap">${actionBadge}</td>
-      <td data-label="Amount" class="py-3 px-2 text-right whitespace-nowrap ${amountClass}">${amountText}</td>
-      <td data-label="Target" class="py-3 px-2 text-right whitespace-nowrap text-ios-label2">${targetText}</td>
-      <td data-label="Units" class="py-3 pl-2 text-right whitespace-nowrap">
+      <td class="py-3 px-2 text-center whitespace-nowrap">${actionBadge}</td>
+      <td class="py-3 px-2 text-right whitespace-nowrap ${amountClass}">${amountText}</td>
+      <td class="py-3 px-2 text-right whitespace-nowrap text-ios-label2">${targetText}</td>
+      <td class="py-3 pl-2 text-right whitespace-nowrap">
         <input data-asset-index="${t.assetIndex}" type="number" step="0.00000001"
                class="number-input w-24 rounded-md bg-white/5 px-2 py-1.5 text-[13px] text-right text-white focus:outline-none focus:ring-2 focus:ring-ios-blue/60"
                value="${escapeAttr(suggestedUnitsVal)}"
@@ -974,7 +974,6 @@ function renderHistory(rows) {
 
   if (isEmpty) {
     const tr = document.createElement('tr');
-    tr.className = 'ios-table-empty-row';
     tr.innerHTML =
       '<td colspan="7" class="py-4 px-2 text-center text-[13px] text-ios-label2">No snapshots yet. Track current state to create the first one.</td>';
     els.historyTableBody.appendChild(tr);
@@ -993,12 +992,12 @@ function renderHistory(rows) {
 
     tr.innerHTML = `
       <td class="py-3 px-2 text-white whitespace-nowrap">${date ? date.toLocaleString(undefined, { dateStyle: 'short', timeStyle: 'short' }) : '–'}</td>
-      <td data-label="Period" class="py-3 px-2 text-right text-white whitespace-nowrap">${row.period_index}</td>
-      <td data-label="Invested" class="py-3 px-2 text-right text-white whitespace-nowrap">${formatUSD(row.invested)}</td>
-      <td data-label="Portfolio value" class="py-3 px-2 text-right text-white whitespace-nowrap">${formatUSD(row.portfolio_value)}</td>
-      <td data-label="P&amp;L" class="py-3 px-2 text-right whitespace-nowrap ${pnlClass}">${formatUSD(row.pnl)}</td>
-      <td data-label="P&amp;L %" class="py-3 px-2 text-right whitespace-nowrap ${pnlClass}">${formatPercent(row.pnl_percent)}</td>
-      <td class="ios-cell-action py-3 pl-2 text-right whitespace-nowrap">
+      <td class="py-3 px-2 text-right text-white whitespace-nowrap">${row.period_index}</td>
+      <td class="py-3 px-2 text-right text-white whitespace-nowrap">${formatUSD(row.invested)}</td>
+      <td class="py-3 px-2 text-right text-white whitespace-nowrap">${formatUSD(row.portfolio_value)}</td>
+      <td class="py-3 px-2 text-right whitespace-nowrap ${pnlClass}">${formatUSD(row.pnl)}</td>
+      <td class="py-3 px-2 text-right whitespace-nowrap ${pnlClass}">${formatPercent(row.pnl_percent)}</td>
+      <td class="py-3 pl-2 text-right whitespace-nowrap">
         <button data-id="${row.id}" class="history-delete-btn text-[12px] w-7 h-7 inline-flex items-center justify-center rounded-full bg-white/5 text-ios-label2 active:bg-ios-red/15 active:text-ios-red transition-colors" title="Delete this record">✕</button>
       </td>
     `;
