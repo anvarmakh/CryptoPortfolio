@@ -320,7 +320,7 @@ function renderAssetsTable() {
     const unitsNum = Number(asset.units) || 0;
     const unitsDisplay = unitsNum ? unitsNum.toFixed(4) : '–';
     const unitsCell = unitsLocked
-      ? `<td class="py-3 px-2 text-right text-ios-label2 text-[13px] whitespace-nowrap hidden sm:table-cell cursor-help" title="Units are locked after the first snapshot. Use &quot;Mark step applied&quot; to update holdings.">${unitsDisplay}</td>`
+      ? `<td class="py-3 px-2 text-right text-ios-label2 text-[13px] whitespace-nowrap hidden sm:table-cell cursor-help" title="Locked — edit via Mark step applied">${unitsDisplay}</td>`
       : `<td class="py-3 px-2 text-right whitespace-nowrap hidden sm:table-cell">
            <input data-index="${index}" data-field="units" type="number" step="0.00000001"
                   class="number-input w-24 rounded-md bg-white/5 px-2 py-1.5 text-[13px] text-right text-white focus:outline-none focus:ring-2 focus:ring-ios-blue/60"
@@ -336,7 +336,7 @@ function renderAssetsTable() {
     const avgCostDisplay = avgCostNum ? formatUSD(avgCostNum) : '–';
     const avgCostLocked = unitsLocked && avgCostNum > 0;
     const avgCostCell = avgCostLocked
-      ? `<td class="py-3 px-2 text-right text-ios-label2 text-[13px] whitespace-nowrap hidden sm:table-cell cursor-help" title="Average cost updates automatically from buys after &quot;Mark step applied&quot;.">${avgCostDisplay}</td>`
+      ? `<td class="py-3 px-2 text-right text-ios-label2 text-[13px] whitespace-nowrap hidden sm:table-cell cursor-help" title="Updates automatically from buys">${avgCostDisplay}</td>`
       : `<td class="py-3 px-2 text-right whitespace-nowrap hidden sm:table-cell">
            <input data-index="${index}" data-field="avgCost" type="number" step="0.00000001"
                   class="number-input w-24 rounded-md bg-white/5 px-2 py-1.5 text-[13px] text-right text-white focus:outline-none focus:ring-2 focus:ring-ios-blue/60"
@@ -1297,7 +1297,7 @@ function fmtAxisLabel(ms) {
 
 function fmtTooltipLabel(ms) {
   const { day, month, hour, minute } = tashkentParts(ms);
-  return `${day}/${month} ${hour}:${minute} (Tashkent)`;
+  return `${day}/${month} ${hour}:${minute}`;
 }
 
 // Chart uses _priceSnapshots for the continuous lines and _historyRows for step markers.

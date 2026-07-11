@@ -276,8 +276,7 @@
                 Mark step applied
               </button>
               <p id="stepHint" class="hidden text-[11px] text-ios-label3 leading-relaxed">
-                Suggested units are pre-filled (positive = buy, negative = sell). Adjust to match
-                what you actually traded, then mark step applied.
+                Positive = buy, negative = sell. Adjust to match what you actually traded.
               </p>
               <p id="trackHint" class="hidden text-[11px] text-ios-label3 leading-relaxed">
                 No snapshots yet. Track current state before applying your first step.
@@ -413,8 +412,7 @@
                        placeholder="e.g. 18 000" />
               </div>
               <p class="mt-1 text-[11px] text-ios-label3 leading-relaxed">
-                Your portfolio's target value at the start of your plan.
-                Future period targets are calculated from here: <em>Target(N) = this + N × step size</em>.
+                Future targets build from here: <em>Target(N) = this + N × step size</em>.
               </p>
             </div>
 
@@ -427,8 +425,7 @@
                        placeholder="e.g. 27 000" />
               </div>
               <p class="mt-1 text-[11px] text-ios-label3 leading-relaxed">
-                Total cash you have invested so far across all periods.
-                Auto-updated each time you mark a step applied — only set this manually when importing an existing plan.
+                Auto-updates after each step — edit manually only when importing an existing plan.
               </p>
             </div>
           </div>
@@ -448,7 +445,7 @@
                        placeholder="e.g. 1 000" />
               </div>
               <p class="mt-1 text-[11px] text-ios-label3">
-                Target grows by this amount each period. E.g. $1 000/month.
+                How much the target grows each period, e.g. $1,000/month.
               </p>
             </div>
 
@@ -461,7 +458,7 @@
                        placeholder="e.g. 2 000" />
               </div>
               <p class="mt-1 text-[11px] text-ios-label3">
-                Caps how much you invest or withdraw in a single step. Leave blank for no cap.
+                Caps how much you invest or withdraw per step. Blank = no cap.
               </p>
             </div>
 
@@ -474,9 +471,7 @@
                        placeholder="0" />
               </div>
               <p class="mt-1 text-[11px] text-ios-label3">
-                How many periods you have already completed.
-                Starts at 0 and auto-increments each time you mark a step applied.
-                Set manually if you are importing an existing plan mid-way.
+                Auto-increments each step — set manually only when importing a plan mid-way.
               </p>
             </div>
           </div>
@@ -491,8 +486,7 @@
             </svg>
           </summary>
           <p class="text-[11px] text-ios-label3 leading-relaxed px-1 -mt-1 mb-2">
-            Pre-tuned defaults for bi-weekly crypto VA. Expand only if you want
-            to override the bands or dust filter behaviour.
+            Defaults are pre-tuned for bi-weekly crypto VA — expand to override.
           </p>
 
           <div class="rounded-2xl bg-ios-card2 divide-y divide-ios-sep px-4">
@@ -505,8 +499,7 @@
                        placeholder="e.g. 10" />
               </div>
               <p class="mt-1 text-[11px] text-ios-label3 leading-relaxed">
-                Dust filter. Trades whose absolute size falls below this are skipped.
-                Set to 0 to disable.
+                Skips trades below this size (dust filter). 0 disables.
               </p>
             </div>
 
@@ -514,8 +507,7 @@
               <div class="min-w-0">
                 <div class="text-[15px] text-white">No-sell mode</div>
                 <p class="mt-1 text-[11px] text-ios-label3 leading-relaxed">
-                  Edleson's recommended variant: hold overweight assets instead of selling.
-                  Actual withdraw steps still execute sells as needed.
+                  Holds overweight assets instead of selling. Withdraw steps still sell as needed.
                 </p>
               </div>
               <label class="relative inline-flex items-center cursor-pointer shrink-0">
@@ -534,8 +526,7 @@
                        placeholder="e.g. 5" />
               </div>
               <p class="mt-1 text-[11px] text-ios-label3 leading-relaxed">
-                Skip drift correction while actual allocation is within this many
-                percentage points of target. 0 disables.
+                Skips rebalancing within this many points of target. 0 disables.
               </p>
             </div>
 
@@ -548,8 +539,7 @@
                        placeholder="e.g. 25" />
               </div>
               <p class="mt-1 text-[11px] text-ios-label3 leading-relaxed">
-                Additional band, proportional to the asset's target. Classic 5/25 rule:
-                set abs=5, rel=25. Effective band per asset is the larger of the two.
+                Proportional band — classic 5/25 rule uses abs=5, rel=25 (larger of the two applies).
               </p>
             </div>
           </div>
