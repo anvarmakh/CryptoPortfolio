@@ -291,14 +291,14 @@ function renderAssetsTable() {
     const currentAssetValue = (Number(asset.price) || 0) * (Number(asset.units) || 0);
     const targetPct = Number(asset.allocation) || 0;
 
-    let currentPctCell = '<td class="py-3 px-2 text-right text-ios-label3 whitespace-nowrap">–</td>';
+    let currentPctCell = '<td data-label="Actual %" class="py-3 px-2 text-right text-ios-label3 whitespace-nowrap">–</td>';
     if (totalPortfolioValue > 0 && currentAssetValue > 0) {
       const currentPct = (currentAssetValue / totalPortfolioValue) * 100;
       const drift = Math.abs(currentPct - targetPct);
       const color = drift <= 1 ? 'text-ios-green' : drift <= 5 ? 'text-ios-orange' : 'text-ios-red';
       const driftSign = currentPct >= targetPct ? '+' : '';
       const driftStr = `${driftSign}${(currentPct - targetPct).toFixed(1)}%`;
-      currentPctCell = `<td class="py-3 px-2 text-right whitespace-nowrap">
+      currentPctCell = `<td data-label="Actual %" class="py-3 px-2 text-right whitespace-nowrap">
         <span class="${color} font-medium">${currentPct.toFixed(1)}%</span>
         <span class="text-[10px] text-ios-label3 ml-1">${driftStr}</span>
       </td>`;
@@ -320,8 +320,8 @@ function renderAssetsTable() {
     const unitsNum = Number(asset.units) || 0;
     const unitsDisplay = unitsNum ? unitsNum.toFixed(4) : '–';
     const unitsCell = unitsLocked
-      ? `<td class="py-3 px-2 text-right text-ios-label2 text-[13px] whitespace-nowrap hidden sm:table-cell cursor-help" title="Units are locked after the first snapshot. Use &quot;Mark step applied&quot; to update holdings.">${unitsDisplay}</td>`
-      : `<td class="py-3 px-2 text-right whitespace-nowrap hidden sm:table-cell">
+      ? `<td data-label="Units" class="py-3 px-2 text-right text-ios-label2 text-[13px] whitespace-nowrap hidden sm:table-cell cursor-help" title="Units are locked after the first snapshot. Use &quot;Mark step applied&quot; to update holdings.">${unitsDisplay}</td>`
+      : `<td data-label="Units" class="py-3 px-2 text-right whitespace-nowrap hidden sm:table-cell">
            <input data-index="${index}" data-field="units" type="number" step="0.00000001"
                   class="number-input w-24 rounded-md bg-white/5 px-2 py-1.5 text-[13px] text-right text-white focus:outline-none focus:ring-2 focus:ring-ios-blue/60"
                   value="${escapeAttr(asset.units ?? '')}" />
@@ -336,8 +336,8 @@ function renderAssetsTable() {
     const avgCostDisplay = avgCostNum ? formatUSD(avgCostNum) : '–';
     const avgCostLocked = unitsLocked && avgCostNum > 0;
     const avgCostCell = avgCostLocked
-      ? `<td class="py-3 px-2 text-right text-ios-label2 text-[13px] whitespace-nowrap hidden sm:table-cell cursor-help" title="Average cost updates automatically from buys after &quot;Mark step applied&quot;.">${avgCostDisplay}</td>`
-      : `<td class="py-3 px-2 text-right whitespace-nowrap hidden sm:table-cell">
+      ? `<td data-label="Avg Cost" class="py-3 px-2 text-right text-ios-label2 text-[13px] whitespace-nowrap hidden sm:table-cell cursor-help" title="Average cost updates automatically from buys after &quot;Mark step applied&quot;.">${avgCostDisplay}</td>`
+      : `<td data-label="Avg Cost" class="py-3 px-2 text-right whitespace-nowrap hidden sm:table-cell">
            <input data-index="${index}" data-field="avgCost" type="number" step="0.00000001"
                   class="number-input w-24 rounded-md bg-white/5 px-2 py-1.5 text-[13px] text-right text-white focus:outline-none focus:ring-2 focus:ring-ios-blue/60"
                   value="${escapeAttr(asset.avgCost ?? '')}" placeholder="0.00" />
@@ -345,26 +345,26 @@ function renderAssetsTable() {
 
     tr.innerHTML = `
       ${tickerCell}
-      <td class="py-3 px-2 text-right whitespace-nowrap">
+      <td data-label="Target %" class="py-3 px-2 text-right whitespace-nowrap">
         <input data-index="${index}" data-field="allocation" type="number" step="0.1"
                class="number-input w-20 rounded-md bg-white/5 px-2 py-1.5 text-[13px] text-right text-white focus:outline-none focus:ring-2 focus:ring-ios-blue/60"
                value="${escapeAttr(asset.allocation ?? '')}" />
       </td>
       ${unitsCell}
       ${avgCostCell}
-      <td class="py-3 px-2 text-right whitespace-nowrap ${asset.price ? 'text-white' : (state.lastPricesFetch ? 'text-ios-orange' : 'text-ios-label3')}">
+      <td data-label="Price" class="py-3 px-2 text-right whitespace-nowrap ${asset.price ? 'text-white' : (state.lastPricesFetch ? 'text-ios-orange' : 'text-ios-label3')}">
         ${asset.price
           ? formatUSD(asset.price)
           : (state.lastPricesFetch ? '⚠ no price' : '–')}
       </td>
-      <td class="py-3 px-2 text-right text-white whitespace-nowrap">
+      <td data-label="Value" class="py-3 px-2 text-right text-white whitespace-nowrap">
         ${asset.price && asset.units ? formatUSD(asset.price * asset.units) : '–'}
       </td>
-      <td class="py-3 px-2 text-right whitespace-nowrap hidden md:table-cell">${computeUnrealizedInnerHtml(asset)}</td>
+      <td data-label="Unrealized" class="py-3 px-2 text-right whitespace-nowrap hidden md:table-cell">${computeUnrealizedInnerHtml(asset)}</td>
       ${currentPctCell}
-      <td class="py-3 pl-2 text-right whitespace-nowrap">
+      <td class="ios-cell-action py-3 pl-2 text-right whitespace-nowrap">
         <button data-index="${index}" data-action="remove-asset"
-                class="text-[11px] w-6 h-6 inline-flex items-center justify-center rounded-full bg-white/5 text-ios-label2 active:bg-ios-red/15 active:text-ios-red transition-colors">
+                class="text-[12px] w-7 h-7 inline-flex items-center justify-center rounded-full bg-white/5 text-ios-label2 active:bg-ios-red/15 active:text-ios-red transition-colors">
           ✕
         </button>
       </td>
@@ -660,7 +660,7 @@ function renderStepDetailsAndTrades() {
       const plural = filteredCount === 1 ? '' : 's';
       els.stepFilterNote.textContent =
         `Filters skipped ${formatUSD(filteredUsd)} across ${filteredCount} asset${plural} ` +
-        `(dust / no-sell). See row badges.`;
+        `(dust / no-sell) — held rows are marked HOLD.`;
       els.stepFilterNote.classList.remove('hidden');
     } else {
       els.stepFilterNote.classList.add('hidden');
@@ -680,14 +680,9 @@ function renderStepDetailsAndTrades() {
 
     const isBuy = t.suggestedValue > TRADE_EPSILON_USD;
     const isSell = t.suggestedValue < -TRADE_EPSILON_USD;
-    const filterBadges = (t.filters || []).map((f) => {
-      const label = f === 'dust' ? 'dust' : 'held';
-      const title = f === 'dust' ? `Below minimum trade size` : `No-sell mode active`;
-      return (
-        `<span class="ml-1 text-[9px] text-ios-label2 bg-white/5 ` +
-        `rounded px-1 py-0.5" title="${escapeAttr(title)}">${escapeHtml(label)}</span>`
-      );
-    }).join('');
+    const filterTitle = (t.filters || []).map((f) =>
+      f === 'dust' ? 'Below minimum trade size' : 'No-sell mode active',
+    ).join(' · ');
 
     const actionBadge = isBuy
       ? '<span class="text-[10px] font-bold text-ios-green bg-ios-green/12 ' +
@@ -696,8 +691,8 @@ function renderStepDetailsAndTrades() {
       ? '<span class="text-[10px] font-bold text-ios-red bg-ios-red/12 ' +
         'rounded px-1.5 py-0.5">SELL</span>'
       : (t.filters && t.filters.length
-          ? '<span class="text-[10px] font-bold text-ios-label2 bg-white/5 ' +
-            'rounded px-1.5 py-0.5">HOLD</span>'
+          ? `<span class="text-[10px] font-bold text-ios-label2 bg-white/5 ` +
+            `rounded px-1.5 py-0.5 cursor-help" title="${escapeAttr(filterTitle)}">HOLD</span>`
           : '<span class="text-[10px] text-ios-label3">—</span>');
 
     const amountText =
@@ -722,12 +717,12 @@ function renderStepDetailsAndTrades() {
 
     tr.innerHTML = `
       <td class="py-3 pr-2 text-white font-medium whitespace-nowrap">
-        ${escapeHtml(t.symbol)}${filterBadges}
+        ${escapeHtml(t.symbol)}
       </td>
-      <td class="py-3 px-2 text-center whitespace-nowrap">${actionBadge}</td>
-      <td class="py-3 px-2 text-right whitespace-nowrap ${amountClass}">${amountText}</td>
-      <td class="py-3 px-2 text-right whitespace-nowrap text-ios-label2">${targetText}</td>
-      <td class="py-3 pl-2 text-right whitespace-nowrap">
+      <td data-label="Action" class="py-3 px-2 text-center whitespace-nowrap">${actionBadge}</td>
+      <td data-label="Amount" class="py-3 px-2 text-right whitespace-nowrap ${amountClass}">${amountText}</td>
+      <td data-label="Target" class="py-3 px-2 text-right whitespace-nowrap text-ios-label2">${targetText}</td>
+      <td data-label="Units" class="py-3 pl-2 text-right whitespace-nowrap">
         <input data-asset-index="${t.assetIndex}" type="number" step="0.00000001"
                class="number-input w-24 rounded-md bg-white/5 px-2 py-1.5 text-[13px] text-right text-white focus:outline-none focus:ring-2 focus:ring-ios-blue/60"
                value="${escapeAttr(suggestedUnitsVal)}"
@@ -979,6 +974,7 @@ function renderHistory(rows) {
 
   if (isEmpty) {
     const tr = document.createElement('tr');
+    tr.className = 'ios-table-empty-row';
     tr.innerHTML =
       '<td colspan="7" class="py-4 px-2 text-center text-[13px] text-ios-label2">No snapshots yet. Track current state to create the first one.</td>';
     els.historyTableBody.appendChild(tr);
@@ -997,13 +993,13 @@ function renderHistory(rows) {
 
     tr.innerHTML = `
       <td class="py-3 px-2 text-white whitespace-nowrap">${date ? date.toLocaleString(undefined, { dateStyle: 'short', timeStyle: 'short' }) : '–'}</td>
-      <td class="py-3 px-2 text-right text-white whitespace-nowrap">${row.period_index}</td>
-      <td class="py-3 px-2 text-right text-white whitespace-nowrap">${formatUSD(row.invested)}</td>
-      <td class="py-3 px-2 text-right text-white whitespace-nowrap">${formatUSD(row.portfolio_value)}</td>
-      <td class="py-3 px-2 text-right whitespace-nowrap ${pnlClass}">${formatUSD(row.pnl)}</td>
-      <td class="py-3 px-2 text-right whitespace-nowrap ${pnlClass}">${formatPercent(row.pnl_percent)}</td>
-      <td class="py-3 pl-2 text-right whitespace-nowrap">
-        <button data-id="${row.id}" class="history-delete-btn text-[11px] w-6 h-6 inline-flex items-center justify-center rounded-full bg-white/5 text-ios-label2 active:bg-ios-red/15 active:text-ios-red transition-colors" title="Delete this record">✕</button>
+      <td data-label="Period" class="py-3 px-2 text-right text-white whitespace-nowrap">${row.period_index}</td>
+      <td data-label="Invested" class="py-3 px-2 text-right text-white whitespace-nowrap">${formatUSD(row.invested)}</td>
+      <td data-label="Portfolio value" class="py-3 px-2 text-right text-white whitespace-nowrap">${formatUSD(row.portfolio_value)}</td>
+      <td data-label="P&amp;L" class="py-3 px-2 text-right whitespace-nowrap ${pnlClass}">${formatUSD(row.pnl)}</td>
+      <td data-label="P&amp;L %" class="py-3 px-2 text-right whitespace-nowrap ${pnlClass}">${formatPercent(row.pnl_percent)}</td>
+      <td class="ios-cell-action py-3 pl-2 text-right whitespace-nowrap">
+        <button data-id="${row.id}" class="history-delete-btn text-[12px] w-7 h-7 inline-flex items-center justify-center rounded-full bg-white/5 text-ios-label2 active:bg-ios-red/15 active:text-ios-red transition-colors" title="Delete this record">✕</button>
       </td>
     `;
 
@@ -1473,11 +1469,16 @@ function renderChart() {
           backgroundColor: '#1c1c1e',
           borderColor: 'rgba(255,255,255,0.12)',
           borderWidth: 1,
-          titleColor: '#98989f',
-          bodyColor: '#ffffff',
+          cornerRadius: 12,
           padding: 10,
-          bodyFont: { family: SYSTEM_FONT_STACK, size: 11 },
-          titleFont: { family: SYSTEM_FONT_STACK, size: 10 },
+          usePointStyle: true,
+          boxWidth: 7,
+          boxHeight: 7,
+          boxPadding: 4,
+          titleColor: '#ffffff',
+          bodyColor: '#ffffff',
+          bodyFont: { family: SYSTEM_FONT_STACK, size: 12 },
+          titleFont: { family: SYSTEM_FONT_STACK, size: 11, weight: '600' },
           callbacks: {
             title: (items) => (items.length ? fmtTooltipLabel(items[0].parsed.x) : ''),
             label: (ctx) => {
@@ -1487,6 +1488,10 @@ function renderChart() {
               const label = ctx.dataset.label === 'Step applied' ? 'Step' : ctx.dataset.label;
               return `${label}: ${formatUSD(ctx.parsed.y)}`;
             },
+            // Color-match each line's value text to its series color (backgroundColor
+            // for the scatter "Step applied" marker, borderColor for the line datasets).
+            labelTextColor: (ctx) =>
+              ctx.dataset.label === 'Step applied' ? ctx.dataset.backgroundColor : ctx.dataset.borderColor,
           },
         },
       },
@@ -1676,9 +1681,14 @@ function attachEventListeners() {
     });
   }
 
-  els.applyStepBtn.addEventListener('click', () => {
+  els.applyStepBtn.addEventListener('click', async () => {
     if (els.applyStepBtn.disabled) return;
-    if (!window.confirm('Mark this step as applied? This will update your holdings and create a snapshot.')) return;
+    const ok = await confirmSheet({
+      title: 'Mark step applied?',
+      message: 'This will update your holdings and create a snapshot.',
+      confirmLabel: 'Mark Applied',
+    });
+    if (!ok) return;
     els.applyStepBtn.disabled = true;
     const details = computeStepDetails();
     const { config } = state;
@@ -1739,7 +1749,13 @@ function attachEventListeners() {
   });
 
   els.resetAllBtn.addEventListener('click', async () => {
-    if (!window.confirm('Reset all configuration, history, and performance chart data? This cannot be undone.')) return;
+    const ok = await confirmSheet({
+      title: 'Reset everything?',
+      message: 'Configuration, history, and performance chart data will be cleared. This cannot be undone.',
+      confirmLabel: 'Reset All',
+      destructive: true,
+    });
+    if (!ok) return;
     state = structuredClone(defaultState);
     _hasHistory = false;
     _historyRows = [];
@@ -1806,7 +1822,13 @@ function attachEventListeners() {
       if (!btn) return;
       const id = Number(btn.dataset.id);
       if (!id) return;
-      if (!window.confirm('Delete this history record? This cannot be undone.')) return;
+      const ok = await confirmSheet({
+        title: 'Delete this record?',
+        message: 'This cannot be undone.',
+        confirmLabel: 'Delete',
+        destructive: true,
+      });
+      if (!ok) return;
       btn.disabled = true;
       btn.textContent = '…';
       try {
@@ -1824,6 +1846,77 @@ function attachEventListeners() {
       }
     });
   }
+}
+
+// ── Confirm sheet (iOS action-sheet style replacement for window.confirm) ──
+let _confirmEls = null;
+let _confirmResolve = null;
+let _confirmKeydownHandler = null;
+
+function getConfirmEls() {
+  if (_confirmEls) return _confirmEls;
+  const overlay = document.getElementById('confirmOverlay');
+  if (!overlay) return (_confirmEls = { overlay: null });
+  _confirmEls = {
+    overlay,
+    backdrop: document.getElementById('confirmBackdrop'),
+    sheet: document.getElementById('confirmSheet'),
+    title: document.getElementById('confirmTitle'),
+    message: document.getElementById('confirmMessage'),
+    actionBtn: document.getElementById('confirmActionBtn'),
+    cancelBtn: document.getElementById('confirmCancelBtn'),
+  };
+  return _confirmEls;
+}
+
+function closeConfirmSheet(result) {
+  const c = getConfirmEls();
+  if (!c.overlay) return;
+  c.backdrop.classList.add('opacity-0');
+  c.sheet.classList.add('confirm-sheet-hidden');
+  setTimeout(() => c.overlay.classList.add('hidden'), 200);
+  if (_confirmKeydownHandler) {
+    document.removeEventListener('keydown', _confirmKeydownHandler);
+    _confirmKeydownHandler = null;
+  }
+  if (_confirmResolve) {
+    const resolve = _confirmResolve;
+    _confirmResolve = null;
+    resolve(result);
+  }
+}
+
+// Promise-based iOS action sheet: title + message + one primary action + Cancel.
+// Falls back to window.confirm if the sheet markup isn't present in the DOM.
+function confirmSheet({ title, message = '', confirmLabel = 'Confirm', destructive = false }) {
+  const c = getConfirmEls();
+  if (!c.overlay) return Promise.resolve(window.confirm(message || title));
+
+  return new Promise((resolve) => {
+    _confirmResolve = resolve;
+    c.title.textContent = title;
+    c.message.textContent = message;
+    c.actionBtn.textContent = confirmLabel;
+    c.actionBtn.className =
+      'w-full border-t border-ios-sep py-3.5 text-[17px] font-semibold active:bg-white/5 transition-colors ' +
+      (destructive ? 'text-ios-red' : 'text-ios-blue');
+
+    c.overlay.classList.remove('hidden');
+    void c.overlay.offsetHeight; // force reflow so the enter transition runs
+    c.backdrop.classList.remove('opacity-0');
+    c.sheet.classList.remove('confirm-sheet-hidden');
+
+    _confirmKeydownHandler = (e) => { if (e.key === 'Escape') closeConfirmSheet(false); };
+    document.addEventListener('keydown', _confirmKeydownHandler);
+  });
+}
+
+function attachConfirmSheetListeners() {
+  const c = getConfirmEls();
+  if (!c.overlay) return;
+  c.backdrop.addEventListener('click', () => closeConfirmSheet(false));
+  c.cancelBtn.addEventListener('click', () => closeConfirmSheet(false));
+  c.actionBtn.addEventListener('click', () => closeConfirmSheet(true));
 }
 
 let _toastTimer = null;
@@ -1851,6 +1944,7 @@ async function init() {
   renderSummaryAndNextStep();
   renderStepDetailsAndTrades();
   attachEventListeners();
+  attachConfirmSheetListeners();
 
   try {
     const res = await fetch('/api/state');
