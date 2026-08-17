@@ -60,6 +60,13 @@
     @media (min-width: 640px) {
       #confirmSheet.confirm-sheet-hidden { transform: translateY(0.75rem) scale(0.96); }
     }
+
+    /* ── Settings dialog (iOS modal-sheet style) ── */
+    #settingsSheet { transition: opacity 0.2s ease-out, transform 0.2s ease-out; }
+    #settingsSheet.settings-sheet-hidden { opacity: 0; transform: translateY(100%); }
+    @media (min-width: 640px) {
+      #settingsSheet.settings-sheet-hidden { transform: translateY(0.75rem) scale(0.96); }
+    }
   </style>
 </head>
 <body class="bg-ios-bg text-ios-label min-h-screen">
@@ -92,6 +99,210 @@
     </div>
   </div>
 
+  <!-- Settings dialog -->
+  <div id="settingsOverlay" class="hidden fixed inset-0 z-[90] flex items-end sm:items-center justify-center">
+    <div id="settingsBackdrop" class="absolute inset-0 bg-black/50 backdrop-blur-sm opacity-0 transition-opacity duration-200"></div>
+    <div id="settingsSheet"
+         role="dialog" aria-modal="true" aria-labelledby="settingsTitle"
+         class="settings-sheet-hidden relative w-full sm:w-[520px] max-h-[90vh] sm:max-h-[85vh]
+                flex flex-col bg-ios-card rounded-t-2xl sm:rounded-2xl overflow-hidden
+                pb-[env(safe-area-inset-bottom)] sm:pb-0">
+
+      <!-- Header -->
+      <div class="flex items-center justify-between gap-3 px-5 py-4 border-b border-ios-sep shrink-0">
+        <div>
+          <h2 id="settingsTitle" class="text-[17px] font-semibold text-white">Settings</h2>
+          <p class="text-[12px] text-ios-label2 mt-0.5">Value-averaging parameters · saved to browser</p>
+        </div>
+        <div class="flex items-center gap-2 shrink-0">
+          <button id="saveConfigBtn"
+                  class="text-[13px] font-semibold px-3.5 py-1.5 rounded-lg bg-ios-blue text-white
+                         active:opacity-70 transition-opacity">
+            Save
+          </button>
+          <button id="settingsCloseBtn" type="button" aria-label="Close settings"
+                  class="w-8 h-8 inline-flex items-center justify-center rounded-full bg-white/[0.06] text-ios-label2
+                         active:bg-white/10 transition-colors">
+            <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24" stroke-width="2.2">
+              <path stroke-linecap="round" stroke-linejoin="round" d="M6 18L18 6M6 6l12 12"/>
+            </svg>
+          </button>
+        </div>
+      </div>
+
+      <!-- Scrollable body -->
+      <div class="overflow-y-auto px-5 pb-6 pt-5 space-y-6">
+
+        <!-- ── SECTION 1: Starting point ────────────────────────── -->
+        <div class="space-y-2">
+          <h3 class="text-[13px] font-medium text-ios-label2 uppercase tracking-wide px-1">Starting point</h3>
+
+          <div class="rounded-2xl bg-ios-card2 divide-y divide-ios-sep px-4">
+            <div class="py-3">
+              <div class="flex items-center justify-between gap-3">
+                <label for="initialValueInput" class="text-[15px] text-white">Initial target value</label>
+                <input id="initialValueInput" type="number" step="100"
+                       class="number-input w-32 text-right bg-transparent text-[15px] text-white
+                              placeholder-ios-label3 focus:outline-none"
+                       placeholder="e.g. 18 000" />
+              </div>
+              <p class="mt-1 text-[11px] text-ios-label3 leading-relaxed">
+                Future targets build from here: <em>Target(N) = this + N × step size</em>.
+              </p>
+            </div>
+
+            <div class="py-3">
+              <div class="flex items-center justify-between gap-3">
+                <label for="investedSoFarInput" class="text-[15px] text-white">Total invested to date</label>
+                <input id="investedSoFarInput" type="number" step="100"
+                       class="number-input w-32 text-right bg-transparent text-[15px] text-white
+                              placeholder-ios-label3 focus:outline-none"
+                       placeholder="e.g. 27 000" />
+              </div>
+              <p class="mt-1 text-[11px] text-ios-label3 leading-relaxed">
+                Auto-updates after each step — edit manually only when importing an existing plan.
+              </p>
+            </div>
+          </div>
+        </div>
+
+        <!-- ── SECTION 2: Plan parameters ────────────────────────── -->
+        <div class="space-y-2">
+          <h3 class="text-[13px] font-medium text-ios-label2 uppercase tracking-wide px-1">Plan parameters</h3>
+
+          <div class="rounded-2xl bg-ios-card2 divide-y divide-ios-sep px-4">
+            <div class="py-3">
+              <div class="flex items-center justify-between gap-3">
+                <label for="stepInput" class="text-[15px] text-white">Step size (USD / period)</label>
+                <input id="stepInput" type="number" step="100"
+                       class="number-input w-32 text-right bg-transparent text-[15px] text-white
+                              placeholder-ios-label3 focus:outline-none"
+                       placeholder="e.g. 1 000" />
+              </div>
+              <p class="mt-1 text-[11px] text-ios-label3">
+                How much the target grows each period, e.g. $1,000/month.
+              </p>
+            </div>
+
+            <div class="py-3">
+              <div class="flex items-center justify-between gap-3">
+                <label for="maxAdditionInput" class="text-[15px] text-white">Max per step ±(USD)</label>
+                <input id="maxAdditionInput" type="number" step="100"
+                       class="number-input w-32 text-right bg-transparent text-[15px] text-white
+                              placeholder-ios-label3 focus:outline-none"
+                       placeholder="e.g. 2 000" />
+              </div>
+              <p class="mt-1 text-[11px] text-ios-label3">
+                Caps how much you invest or withdraw per step. Blank = no cap.
+              </p>
+            </div>
+
+            <div class="py-3">
+              <div class="flex items-center justify-between gap-3">
+                <label for="completedPeriodsInput" class="text-[15px] text-white">Completed periods</label>
+                <input id="completedPeriodsInput" type="number" min="0" step="1"
+                       class="number-input w-32 text-right bg-transparent text-[15px] text-white
+                              placeholder-ios-label3 focus:outline-none"
+                       placeholder="0" />
+              </div>
+              <p class="mt-1 text-[11px] text-ios-label3">
+                Auto-increments each step — set manually only when importing a plan mid-way.
+              </p>
+            </div>
+          </div>
+        </div>
+
+        <!-- ── SECTION 3: Efficiency tuning ────────────────────── -->
+        <details class="space-y-2">
+          <summary class="cursor-pointer select-none flex items-center justify-between px-1">
+            <h3 class="text-[13px] font-medium text-ios-label2 uppercase tracking-wide">Efficiency tuning</h3>
+            <svg class="chevron w-4 h-4 text-ios-label3 shrink-0 ml-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 9l-7 7-7-7"/>
+            </svg>
+          </summary>
+          <p class="text-[11px] text-ios-label3 leading-relaxed px-1 -mt-1 mb-2">
+            Defaults are pre-tuned for bi-weekly crypto VA — expand to override.
+          </p>
+
+          <div class="rounded-2xl bg-ios-card2 divide-y divide-ios-sep px-4">
+            <div class="py-3">
+              <div class="flex items-center justify-between gap-3">
+                <label for="minTradeSizeInput" class="text-[15px] text-white">Minimum trade size (USD)</label>
+                <input id="minTradeSizeInput" type="number" min="0" step="1"
+                       class="number-input w-32 text-right bg-transparent text-[15px] text-white
+                              placeholder-ios-label3 focus:outline-none"
+                       placeholder="e.g. 10" />
+              </div>
+              <p class="mt-1 text-[11px] text-ios-label3 leading-relaxed">
+                Skips trades below this size (dust filter). 0 disables.
+              </p>
+            </div>
+
+            <div class="py-3 flex items-center justify-between gap-3">
+              <div class="min-w-0">
+                <div class="text-[15px] text-white">No-sell mode</div>
+                <p class="mt-1 text-[11px] text-ios-label3 leading-relaxed">
+                  Holds overweight assets instead of selling. Withdraw steps still sell as needed.
+                </p>
+              </div>
+              <label class="relative inline-flex items-center cursor-pointer shrink-0">
+                <input id="noSellModeInput" type="checkbox" class="peer sr-only" />
+                <div class="w-[51px] h-[31px] bg-white/15 rounded-full peer-checked:bg-ios-green transition-colors"></div>
+                <div class="absolute left-[2px] top-[2px] w-[27px] h-[27px] bg-white rounded-full shadow transition-transform peer-checked:translate-x-[20px]"></div>
+              </label>
+            </div>
+
+            <div class="py-3">
+              <div class="flex items-center justify-between gap-3">
+                <label for="rebalanceAbsBandInput" class="text-[15px] text-white">Rebalance band — absolute (pp)</label>
+                <input id="rebalanceAbsBandInput" type="number" min="0" step="0.5"
+                       class="number-input w-32 text-right bg-transparent text-[15px] text-white
+                              placeholder-ios-label3 focus:outline-none"
+                       placeholder="e.g. 5" />
+              </div>
+              <p class="mt-1 text-[11px] text-ios-label3 leading-relaxed">
+                Skips rebalancing within this many points of target. 0 disables.
+              </p>
+            </div>
+
+            <div class="py-3">
+              <div class="flex items-center justify-between gap-3">
+                <label for="rebalanceRelBandInput" class="text-[15px] text-white">Rebalance band — relative (%)</label>
+                <input id="rebalanceRelBandInput" type="number" min="0" step="1"
+                       class="number-input w-32 text-right bg-transparent text-[15px] text-white
+                              placeholder-ios-label3 focus:outline-none"
+                       placeholder="e.g. 25" />
+              </div>
+              <p class="mt-1 text-[11px] text-ios-label3 leading-relaxed">
+                Proportional band — classic 5/25 rule uses abs=5, rel=25 (larger of the two applies).
+              </p>
+            </div>
+          </div>
+        </details>
+
+        <!-- ── SECTION 4: Reset ──────────────────────────────────── -->
+        <div class="space-y-2">
+          <h3 class="text-[13px] font-medium text-ios-label2 uppercase tracking-wide px-1">Reset</h3>
+
+          <div class="rounded-2xl bg-ios-card2 px-4 py-3.5 flex items-center justify-between gap-3">
+            <div class="min-w-0">
+              <div class="text-[15px] text-white">Reset everything</div>
+              <p class="mt-1 text-[11px] text-ios-label3 leading-relaxed">
+                Clears configuration, holdings, history, and performance chart data. This cannot be undone.
+              </p>
+            </div>
+            <button id="resetAllBtn"
+                    class="shrink-0 text-[13px] font-semibold text-ios-red px-3.5 py-1.5 rounded-lg
+                           bg-ios-red/10 active:bg-ios-red/20 transition-colors">
+              Reset
+            </button>
+          </div>
+        </div>
+
+      </div>
+    </div>
+  </div>
+
   <div class="max-w-6xl mx-auto px-4 py-5 sm:py-8 space-y-3 sm:space-y-4">
 
     <!-- ─── HEADER ─────────────────────────────────────────────── -->
@@ -101,9 +312,14 @@
         <p id="lastUpdated" class="text-[13px] text-ios-label2 mt-1.5">Prices not yet loaded · refresh to start</p>
       </div>
       <div class="flex items-center gap-3 shrink-0">
-        <button id="resetAllBtn"
-                class="text-[13px] text-ios-red/80 hover:text-ios-red transition-colors px-2 py-1 rounded-lg active:bg-ios-red/10">
-          Reset
+        <button id="settingsBtn" type="button" title="Settings" aria-haspopup="dialog"
+                class="w-9 h-9 inline-flex items-center justify-center rounded-full bg-white/[0.06] text-ios-label2
+                       active:bg-white/10 transition-colors">
+          <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24" stroke-width="1.7">
+            <path stroke-linecap="round" stroke-linejoin="round" d="M10.343 3.94c.09-.542.56-.94 1.11-.94h1.093c.55 0 1.02.398 1.11.94l.149.894c.07.424.384.764.78.93.398.164.855.142 1.205-.108l.737-.527a1.125 1.125 0 011.45.12l.773.774c.39.389.44 1.002.12 1.45l-.527.737c-.25.35-.272.806-.107 1.204.165.397.505.71.93.78l.893.15c.543.09.94.56.94 1.109v1.094c0 .55-.397 1.02-.94 1.11l-.893.149c-.425.07-.765.383-.93.78-.165.398-.143.854.107 1.204l.527.738c.32.447.269 1.06-.12 1.45l-.774.773a1.125 1.125 0 01-1.449.12l-.738-.527c-.35-.25-.806-.272-1.203-.107-.397.165-.71.505-.781.929l-.149.894c-.09.542-.56.94-1.11.94h-1.094c-.55 0-1.019-.398-1.11-.94l-.148-.894c-.071-.424-.384-.764-.781-.93-.398-.164-.854-.142-1.204.108l-.738.527c-.447.32-1.06.269-1.45-.12l-.773-.774a1.125 1.125 0 01-.12-1.45l.527-.737c.25-.35.272-.806.108-1.204-.165-.397-.506-.71-.93-.78l-.894-.15c-.542-.09-.94-.56-.94-1.109v-1.094c0-.55.398-1.02.94-1.11l.894-.149c.424-.07.765-.383.93-.78.165-.398.143-.854-.108-1.204l-.526-.738a1.125 1.125 0 01.12-1.45l.773-.773a1.125 1.125 0 011.45-.12l.737.527c.35.25.807.272 1.204.107.397-.165.71-.505.78-.929l.15-.894z"/>
+            <path stroke-linecap="round" stroke-linejoin="round" d="M15 12a3 3 0 11-6 0 3 3 0 016 0z"/>
+          </svg>
+          <span class="sr-only">Settings</span>
         </button>
       </div>
     </header>
@@ -374,179 +590,6 @@
 
       </div>
     </section>
-
-    <!-- ─── SETTINGS ──────────────────────────────────────────── -->
-    <details id="settingsPanel" class="rounded-2xl bg-ios-card overflow-hidden">
-      <summary class="px-5 py-4 flex items-center justify-between cursor-pointer select-none
-                      active:bg-white/[0.04] transition-colors">
-        <div>
-          <h2 class="text-[17px] font-semibold text-white">Plan settings</h2>
-          <p class="text-[12px] text-ios-label2 mt-0.5">Value-averaging parameters · saved to browser</p>
-        </div>
-        <div class="flex items-center gap-3">
-          <button id="saveConfigBtn"
-                  class="text-[13px] font-semibold px-3.5 py-1.5 rounded-lg bg-ios-blue text-white
-                         active:opacity-70 transition-opacity"
-                  onclick="event.stopPropagation()">
-            Save
-          </button>
-          <svg class="chevron w-4 h-4 text-ios-label3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 9l-7 7-7-7"/>
-          </svg>
-        </div>
-      </summary>
-
-      <div class="px-5 pb-6 space-y-6 border-t border-ios-sep pt-5">
-
-        <!-- ── SECTION 1: Starting point ────────────────────────── -->
-        <div class="space-y-2">
-          <h3 class="text-[13px] font-medium text-ios-label2 uppercase tracking-wide px-1">Starting point</h3>
-
-          <div class="rounded-2xl bg-ios-card2 divide-y divide-ios-sep px-4">
-            <div class="py-3">
-              <div class="flex items-center justify-between gap-3">
-                <label for="initialValueInput" class="text-[15px] text-white">Initial target value</label>
-                <input id="initialValueInput" type="number" step="100"
-                       class="number-input w-32 text-right bg-transparent text-[15px] text-white
-                              placeholder-ios-label3 focus:outline-none"
-                       placeholder="e.g. 18 000" />
-              </div>
-              <p class="mt-1 text-[11px] text-ios-label3 leading-relaxed">
-                Future targets build from here: <em>Target(N) = this + N × step size</em>.
-              </p>
-            </div>
-
-            <div class="py-3">
-              <div class="flex items-center justify-between gap-3">
-                <label for="investedSoFarInput" class="text-[15px] text-white">Total invested to date</label>
-                <input id="investedSoFarInput" type="number" step="100"
-                       class="number-input w-32 text-right bg-transparent text-[15px] text-white
-                              placeholder-ios-label3 focus:outline-none"
-                       placeholder="e.g. 27 000" />
-              </div>
-              <p class="mt-1 text-[11px] text-ios-label3 leading-relaxed">
-                Auto-updates after each step — edit manually only when importing an existing plan.
-              </p>
-            </div>
-          </div>
-        </div>
-
-        <!-- ── SECTION 2: Plan parameters ────────────────────────── -->
-        <div class="space-y-2">
-          <h3 class="text-[13px] font-medium text-ios-label2 uppercase tracking-wide px-1">Plan parameters</h3>
-
-          <div class="rounded-2xl bg-ios-card2 divide-y divide-ios-sep px-4">
-            <div class="py-3">
-              <div class="flex items-center justify-between gap-3">
-                <label for="stepInput" class="text-[15px] text-white">Step size (USD / period)</label>
-                <input id="stepInput" type="number" step="100"
-                       class="number-input w-32 text-right bg-transparent text-[15px] text-white
-                              placeholder-ios-label3 focus:outline-none"
-                       placeholder="e.g. 1 000" />
-              </div>
-              <p class="mt-1 text-[11px] text-ios-label3">
-                How much the target grows each period, e.g. $1,000/month.
-              </p>
-            </div>
-
-            <div class="py-3">
-              <div class="flex items-center justify-between gap-3">
-                <label for="maxAdditionInput" class="text-[15px] text-white">Max per step ±(USD)</label>
-                <input id="maxAdditionInput" type="number" step="100"
-                       class="number-input w-32 text-right bg-transparent text-[15px] text-white
-                              placeholder-ios-label3 focus:outline-none"
-                       placeholder="e.g. 2 000" />
-              </div>
-              <p class="mt-1 text-[11px] text-ios-label3">
-                Caps how much you invest or withdraw per step. Blank = no cap.
-              </p>
-            </div>
-
-            <div class="py-3">
-              <div class="flex items-center justify-between gap-3">
-                <label for="completedPeriodsInput" class="text-[15px] text-white">Completed periods</label>
-                <input id="completedPeriodsInput" type="number" min="0" step="1"
-                       class="number-input w-32 text-right bg-transparent text-[15px] text-white
-                              placeholder-ios-label3 focus:outline-none"
-                       placeholder="0" />
-              </div>
-              <p class="mt-1 text-[11px] text-ios-label3">
-                Auto-increments each step — set manually only when importing a plan mid-way.
-              </p>
-            </div>
-          </div>
-        </div>
-
-        <!-- ── SECTION 3: Efficiency tuning ────────────────────── -->
-        <details class="space-y-2">
-          <summary class="cursor-pointer select-none flex items-center justify-between px-1">
-            <h3 class="text-[13px] font-medium text-ios-label2 uppercase tracking-wide">Efficiency tuning</h3>
-            <svg class="chevron w-4 h-4 text-ios-label3 shrink-0 ml-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-              <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 9l-7 7-7-7"/>
-            </svg>
-          </summary>
-          <p class="text-[11px] text-ios-label3 leading-relaxed px-1 -mt-1 mb-2">
-            Defaults are pre-tuned for bi-weekly crypto VA — expand to override.
-          </p>
-
-          <div class="rounded-2xl bg-ios-card2 divide-y divide-ios-sep px-4">
-            <div class="py-3">
-              <div class="flex items-center justify-between gap-3">
-                <label for="minTradeSizeInput" class="text-[15px] text-white">Minimum trade size (USD)</label>
-                <input id="minTradeSizeInput" type="number" min="0" step="1"
-                       class="number-input w-32 text-right bg-transparent text-[15px] text-white
-                              placeholder-ios-label3 focus:outline-none"
-                       placeholder="e.g. 10" />
-              </div>
-              <p class="mt-1 text-[11px] text-ios-label3 leading-relaxed">
-                Skips trades below this size (dust filter). 0 disables.
-              </p>
-            </div>
-
-            <div class="py-3 flex items-center justify-between gap-3">
-              <div class="min-w-0">
-                <div class="text-[15px] text-white">No-sell mode</div>
-                <p class="mt-1 text-[11px] text-ios-label3 leading-relaxed">
-                  Holds overweight assets instead of selling. Withdraw steps still sell as needed.
-                </p>
-              </div>
-              <label class="relative inline-flex items-center cursor-pointer shrink-0">
-                <input id="noSellModeInput" type="checkbox" class="peer sr-only" />
-                <div class="w-[51px] h-[31px] bg-white/15 rounded-full peer-checked:bg-ios-green transition-colors"></div>
-                <div class="absolute left-[2px] top-[2px] w-[27px] h-[27px] bg-white rounded-full shadow transition-transform peer-checked:translate-x-[20px]"></div>
-              </label>
-            </div>
-
-            <div class="py-3">
-              <div class="flex items-center justify-between gap-3">
-                <label for="rebalanceAbsBandInput" class="text-[15px] text-white">Rebalance band — absolute (pp)</label>
-                <input id="rebalanceAbsBandInput" type="number" min="0" step="0.5"
-                       class="number-input w-32 text-right bg-transparent text-[15px] text-white
-                              placeholder-ios-label3 focus:outline-none"
-                       placeholder="e.g. 5" />
-              </div>
-              <p class="mt-1 text-[11px] text-ios-label3 leading-relaxed">
-                Skips rebalancing within this many points of target. 0 disables.
-              </p>
-            </div>
-
-            <div class="py-3">
-              <div class="flex items-center justify-between gap-3">
-                <label for="rebalanceRelBandInput" class="text-[15px] text-white">Rebalance band — relative (%)</label>
-                <input id="rebalanceRelBandInput" type="number" min="0" step="1"
-                       class="number-input w-32 text-right bg-transparent text-[15px] text-white
-                              placeholder-ios-label3 focus:outline-none"
-                       placeholder="e.g. 25" />
-              </div>
-              <p class="mt-1 text-[11px] text-ios-label3 leading-relaxed">
-                Proportional band — classic 5/25 rule uses abs=5, rel=25 (larger of the two applies).
-              </p>
-            </div>
-          </div>
-        </details>
-
-      </div>
-    </details>
 
     <footer class="text-[11px] text-ios-label3 text-center py-2">
       Prices via CoinGecko · Config in browser storage · History persisted server-side

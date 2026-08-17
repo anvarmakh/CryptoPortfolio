@@ -225,6 +225,13 @@ function getElements() {
     stepHint: document.getElementById('stepHint'),
     trackHint: document.getElementById('trackHint'),
     resetAllBtn: document.getElementById('resetAllBtn'),
+
+    // Settings dialog
+    settingsBtn: document.getElementById('settingsBtn'),
+    settingsOverlay: document.getElementById('settingsOverlay'),
+    settingsBackdrop: document.getElementById('settingsBackdrop'),
+    settingsSheet: document.getElementById('settingsSheet'),
+    settingsCloseBtn: document.getElementById('settingsCloseBtn'),
   };
 }
 
@@ -567,8 +574,10 @@ function renderStepDetailsAndTrades() {
   }
 
   if (!config.stepPerPeriod || config.stepPerPeriod <= 0) {
-    els.stepError.textContent =
-      'Set a Step size in Plan settings to calculate your next action.';
+    els.stepError.innerHTML =
+      'Set a Step size in <button type="button" data-action="open-settings" ' +
+      'class="underline underline-offset-2 font-medium hover:opacity-70 transition-opacity">Settings</button> ' +
+      'to calculate your next action.';
     els.stepError.classList.remove('hidden');
     els.tradesEmpty.classList.remove('hidden');
     els.tradesContent.classList.add('hidden');
@@ -1764,6 +1773,7 @@ function attachEventListeners() {
     renderAssetsTable();
     renderSummaryAndNextStep();
     renderStepDetailsAndTrades();
+    closeSettings();
     try {
       await Promise.all([
         fetch('/api/history', { method: 'DELETE' }),
@@ -1845,6 +1855,22 @@ function attachEventListeners() {
       }
     });
   }
+
+  if (els.settingsBtn) {
+    els.settingsBtn.addEventListener('click', () => openSettings());
+  }
+  if (els.settingsCloseBtn) {
+    els.settingsCloseBtn.addEventListener('click', () => closeSettings());
+  }
+  if (els.settingsBackdrop) {
+    els.settingsBackdrop.addEventListener('click', () => closeSettings());
+  }
+
+  // Delegated: inline "Settings" link inside the step-size-missing error message.
+  els.stepError.addEventListener('click', (event) => {
+    const btn = event.target.closest('[data-action="open-settings"]');
+    if (btn) openSettings();
+  });
 }
 
 // ── Confirm sheet (iOS action-sheet style replacement for window.confirm) ──
@@ -1918,6 +1944,41 @@ function attachConfirmSheetListeners() {
   c.actionBtn.addEventListener('click', () => closeConfirmSheet(true));
 }
 
+// ── Settings dialog (opened via the header gear icon) ──────────────────────
+let _settingsKeydownHandler = null;
+
+function openSettings() {
+  if (!els.settingsOverlay) return;
+  els.settingsOverlay.classList.remove('hidden');
+  void els.settingsOverlay.offsetHeight; // force reflow so the enter transition runs
+  els.settingsBackdrop.classList.remove('opacity-0');
+  els.settingsSheet.classList.remove('settings-sheet-hidden');
+  document.body.style.overflow = 'hidden';
+
+  _settingsKeydownHandler = (e) => {
+    if (e.key !== 'Escape') return;
+    // Let a confirm sheet stacked on top (e.g. the Reset confirmation) claim
+    // Escape first — otherwise one keypress would dismiss both dialogs at once.
+    const confirmOverlay = document.getElementById('confirmOverlay');
+    if (confirmOverlay && !confirmOverlay.classList.contains('hidden')) return;
+    closeSettings();
+  };
+  document.addEventListener('keydown', _settingsKeydownHandler);
+}
+
+function closeSettings() {
+  if (!els.settingsOverlay) return;
+  if (els.settingsOverlay.classList.contains('hidden')) return;
+  els.settingsBackdrop.classList.add('opacity-0');
+  els.settingsSheet.classList.add('settings-sheet-hidden');
+  document.body.style.overflow = '';
+  setTimeout(() => els.settingsOverlay.classList.add('hidden'), 200);
+  if (_settingsKeydownHandler) {
+    document.removeEventListener('keydown', _settingsKeydownHandler);
+    _settingsKeydownHandler = null;
+  }
+}
+
 let _toastTimer = null;
 function showToast(message, duration = 5000) {
   const toast = document.getElementById('toast');
@@ -1981,8 +2042,7 @@ async function init() {
 
   const isFirstRun = !state.config.initialValue && !state.config.stepPerPeriod;
   if (isFirstRun) {
-    const panel = document.getElementById('settingsPanel');
-    if (panel) panel.open = true;
+    openSettings();
   }
 }
 
