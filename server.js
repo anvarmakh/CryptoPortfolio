@@ -154,6 +154,16 @@ const SNAPSHOT_INTERVAL_MS = 6 * 60 * 60 * 1000;
 // the chart from clustering two near-identical rows minutes apart.
 const SCHEDULER_CLUSTER_SUPPRESS_MS = 30 * 60 * 1000;
 
+// Which fixed 6h window (since epoch) a timestamp falls into. Used to check
+// "has this boundary already been recorded" instead of gating on raw elapsed
+// time — raw elapsed time is vulnerable to setTimeout jitter: two firings a
+// few seconds apart in lateness can compute an elapsed time just under 6h
+// even though they straddle a real boundary, which was silently skipping
+// every other scheduled window (6h cadence in code, ~12h in practice).
+function snapshotWindowIndex(ms) {
+  return Math.floor(ms / SNAPSHOT_INTERVAL_MS);
+}
+
 // Latest snapshot row (or undefined). Pass a source to filter; omit for any source.
 function latestPriceSnapshot(source) {
   const sql = source
@@ -173,13 +183,15 @@ async function recordScheduledPriceSnapshot() {
   _schedulerRunning = true;
   try {
     // Independent 6h cadence over server-source rows only — the safety net must
-    // keep firing regardless of user activity.
+    // keep firing regardless of user activity. Gated on window index rather than
+    // elapsed time so scheduler jitter can't push a legitimate new window under
+    // the threshold and cause a skip.
     const lastServer = latestPriceSnapshot('server');
     if (lastServer) {
-      const elapsedMs = Date.now() - new Date(lastServer.created_at).getTime();
-      if (elapsedMs < SNAPSHOT_INTERVAL_MS) {
-        const hAgo = (elapsedMs / 3_600_000).toFixed(1);
-        console.log(`[scheduler] Skipping — last server snapshot was ${hAgo}h ago`);
+      const lastWindow = snapshotWindowIndex(new Date(lastServer.created_at).getTime());
+      const currentWindow = snapshotWindowIndex(Date.now());
+      if (lastWindow >= currentWindow) {
+        console.log(`[scheduler] Skipping — window ${currentWindow} already has a server snapshot`);
         return;
       }
     }
