@@ -57,7 +57,7 @@ let _historyRows = [];
 let _priceSnapshots = null;
 let _priceSnapshotInFlight = false;
 
-// Chart resolution filter: '7d' | '30d' | '90d' | 'all'
+// Chart resolution filter: '7d' | '30d' | '90d' | '6m' | '1y' | 'all'
 let _chartResolution = '7d';
 
 // Suspend chart renders during initial parallel fetches so we only render once,
@@ -1325,7 +1325,7 @@ function renderChart() {
 
     // --- resolve line data source ---
     let lineSnaps = validPriceSnaps; // already sorted ASC
-    const resDays  = { '7d': 7, '30d': 30, '90d': 90 };
+    const resDays  = { '7d': 7, '30d': 30, '90d': 90, '6m': 182, '1y': 365 };
     const windowDays = resDays[_chartResolution] ?? 0;
     const visibleCutoff = (_chartResolution !== 'all' && windowDays)
       ? Date.now() - windowDays * 24 * 3_600_000
