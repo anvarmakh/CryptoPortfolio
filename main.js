@@ -1213,6 +1213,15 @@ function isValidSnapshot(row) {
 
 // Return price snapshots sampled at most once per `intervalHours`.
 // Input must already be sorted ASC by created_at.
+//
+// Server snapshots land a few seconds to low-minutes after their target boundary
+// (scheduler timer jitter, startup catch-up runs), so two consecutive snapshots that
+// are "really" one interval apart can measure a hair under it — e.g. production data
+// has shown 6h-cadence snapshots landing 5h59m53s apart. A strict `>=` against the
+// exact interval drops the second point in that case, same failure mode the scheduler
+// itself had (see snapshotWindowIndex in server.js). Tolerate that jitter here too.
+const SAMPLE_JITTER_TOLERANCE_MS = 15 * 60 * 1000;
+
 function sampleByInterval(snapshots, intervalHours) {
   if (!snapshots.length) return [];
   const ms = intervalHours * 3_600_000;
@@ -1220,7 +1229,7 @@ function sampleByInterval(snapshots, intervalHours) {
   let lastT = -Infinity;
   for (const s of snapshots) {
     const t = new Date(s.created_at).getTime();
-    if (t - lastT >= ms) { out.push(s); lastT = t; }
+    if (t - lastT >= ms - SAMPLE_JITTER_TOLERANCE_MS) { out.push(s); lastT = t; }
   }
   return out;
 }
