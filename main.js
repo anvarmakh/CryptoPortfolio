@@ -39,7 +39,8 @@ const defaultState = {
 
 let state = loadState();
 
-// Whether at least one history snapshot exists — controls units-column lock.
+// Whether at least one history snapshot exists — controls the avg-cost lock
+// and whether "Track current state" or "Mark step applied" is shown.
 let _hasHistory = false;
 
 // Latest history rows (step snapshots), used by chart/analytics/export.
@@ -273,7 +274,6 @@ function renderAssetsTable() {
   const fragment = document.createDocumentFragment();
 
   const totalPortfolioValue = computePortfolioValue();
-  const unitsLocked = _hasHistory;
 
   state.assets.forEach((asset, index) => {
     const tr = document.createElement('tr');
@@ -307,12 +307,11 @@ function renderAssetsTable() {
                   value="" placeholder="BTC" />
          </td>`;
 
-    // Units: editable only before history; afterwards shown as plain 4dp text
-    const unitsNum = Number(asset.units) || 0;
-    const unitsDisplay = unitsNum ? unitsNum.toFixed(4) : '–';
-    const unitsCell = unitsLocked
-      ? `<td class="py-3 px-2 text-right text-ios-label2 text-[13px] whitespace-nowrap hidden sm:table-cell cursor-help" title="Locked — edit via Mark step applied">${unitsDisplay}</td>`
-      : `<td class="py-3 px-2 text-right whitespace-nowrap hidden sm:table-cell">
+    // Units: always inline-editable, so a manual correction or an off-app
+    // transaction can be reflected directly without going through a full
+    // value-averaging step. The trades table's per-step delta entry remains
+    // the guided flow for recording buys/sells against avgCost and investedSoFar.
+    const unitsCell = `<td class="py-3 px-2 text-right whitespace-nowrap hidden sm:table-cell">
            <input data-index="${index}" data-field="units" type="number" step="0.00000001"
                   class="number-input w-24 rounded-md bg-white/5 px-2 py-1.5 text-[13px] text-right text-white focus:outline-none focus:ring-2 focus:ring-ios-blue/60"
                   value="${escapeAttr(asset.units ?? '')}" />
@@ -325,7 +324,7 @@ function renderAssetsTable() {
     // stays editable regardless of history so it can be bootstrapped at any time.
     const avgCostNum = Number(asset.avgCost) || 0;
     const avgCostDisplay = avgCostNum ? formatUSD(avgCostNum) : '–';
-    const avgCostLocked = unitsLocked && avgCostNum > 0;
+    const avgCostLocked = _hasHistory && avgCostNum > 0;
     const avgCostCell = avgCostLocked
       ? `<td class="py-3 px-2 text-right text-ios-label2 text-[13px] whitespace-nowrap hidden sm:table-cell cursor-help" title="Updates automatically from buys">${avgCostDisplay}</td>`
       : `<td class="py-3 px-2 text-right whitespace-nowrap hidden sm:table-cell">
@@ -954,7 +953,7 @@ function renderHistory(rows) {
   const hadHistory = _hasHistory;
   _hasHistory = !isEmpty;
 
-  // Re-render assets table if history state changed (to lock/unlock units column)
+  // Re-render assets table if history state changed (to lock/unlock avg cost)
   if (_hasHistory !== hadHistory) {
     renderAssetsTable();
   }
@@ -1627,7 +1626,7 @@ function attachEventListeners() {
       els.allocationTotal.className =
         'text-[13px] font-semibold ' +
         (Math.abs(total - 100) < 0.01 ? 'text-ios-green' : 'text-ios-orange');
-    } else if (field === 'units' && !_hasHistory) {
+    } else if (field === 'units') {
       asset.units = Math.max(0, Number(target.value) || 0);
       // Surgically update the value cell and unrealized-P&L cell so we don't
       // lose input focus/cursor position from a full renderAssetsTable() re-render.
@@ -1640,8 +1639,8 @@ function attachEventListeners() {
         tr.cells[6].innerHTML = computeUnrealizedInnerHtml(asset);
       }
     } else if (field === 'avgCost') {
-      // No `!_hasHistory` guard here (unlike units above): this input only exists in
-      // the DOM when avgCostLocked was false at render time, and re-checking the live
+      // No live-relock check here: this input only exists in the DOM when
+      // avgCostLocked was false at render time, and re-checking the live
       // asset.avgCost value here would lock the field after the very first keystroke
       // (since typing a nonzero digit makes it look "established" mid-edit).
       asset.avgCost = Math.max(0, Number(target.value) || 0);
