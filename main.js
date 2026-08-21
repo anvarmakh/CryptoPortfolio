@@ -5,12 +5,8 @@ const STORAGE_KEY = 'crypto_value_averaging_state_v1';
 
 const SYSTEM_FONT_STACK = "-apple-system, BlinkMacSystemFont, 'SF Pro Text', 'Segoe UI Variable Display', 'Segoe UI', system-ui, Roboto, 'Helvetica Neue', Arial, sans-serif";
 
-// Efficiency-tuning defaults. Bands follow the classic 5/25 rule: cuts ~80%
-// of churn trades while preserving allocation discipline. Dust $10 because
-// exchange fees eat smaller trades.
+// Efficiency-tuning defaults. Dust $10 because exchange fees eat smaller trades.
 const DEFAULT_MIN_TRADE_USD = 10;
-const DEFAULT_ABS_BAND_PP = 5;
-const DEFAULT_REL_BAND_PCT = 25;
 
 const defaultState = {
   config: {
@@ -20,8 +16,6 @@ const defaultState = {
     completedPeriods: 0,
     investedSoFar: 0,
     minTradeSize: DEFAULT_MIN_TRADE_USD,
-    rebalanceAbsBand: DEFAULT_ABS_BAND_PP,
-    rebalanceRelBand: DEFAULT_REL_BAND_PCT,
     noSellMode: false,
   },
   assets: [
@@ -94,10 +88,16 @@ function loadState() {
     const assets = Array.isArray(parsed.assets) && parsed.assets.length
       ? parsed.assets
       : structuredClone(defaultState.assets);
+    const config = { ...structuredClone(defaultState.config), ...(parsed.config || {}) };
+    // Legacy keys: rebalance bands were removed when per-asset trades moved to the
+    // direct target-share formula. Drop them so persisted state stops carrying
+    // settings nothing reads.
+    delete config.rebalanceAbsBand;
+    delete config.rebalanceRelBand;
     return {
       ...structuredClone(defaultState),
       ...parsed,
-      config: { ...structuredClone(defaultState.config), ...(parsed.config || {}) },
+      config,
       assets,
     };
   } catch (e) {
@@ -185,8 +185,6 @@ function getElements() {
     completedPeriodsInput: document.getElementById('completedPeriodsInput'),
     investedSoFarInput: document.getElementById('investedSoFarInput'),
     minTradeSizeInput: document.getElementById('minTradeSizeInput'),
-    rebalanceAbsBandInput: document.getElementById('rebalanceAbsBandInput'),
-    rebalanceRelBandInput: document.getElementById('rebalanceRelBandInput'),
     noSellModeInput: document.getElementById('noSellModeInput'),
 
     // Assets table
@@ -247,14 +245,6 @@ function syncConfigInputsFromState() {
   if (els.minTradeSizeInput) {
     els.minTradeSizeInput.value = config.minTradeSize != null ? config.minTradeSize : '';
   }
-  if (els.rebalanceAbsBandInput) {
-    els.rebalanceAbsBandInput.value =
-      config.rebalanceAbsBand != null ? config.rebalanceAbsBand : '';
-  }
-  if (els.rebalanceRelBandInput) {
-    els.rebalanceRelBandInput.value =
-      config.rebalanceRelBand != null ? config.rebalanceRelBand : '';
-  }
   if (els.noSellModeInput) {
     els.noSellModeInput.checked = !!config.noSellMode;
   }
@@ -272,12 +262,6 @@ function syncStateFromConfigInputs() {
   }
   if (els.minTradeSizeInput) {
     cfg.minTradeSize = Math.max(0, Number(els.minTradeSizeInput.value) || 0);
-  }
-  if (els.rebalanceAbsBandInput) {
-    cfg.rebalanceAbsBand = Math.max(0, Number(els.rebalanceAbsBandInput.value) || 0);
-  }
-  if (els.rebalanceRelBandInput) {
-    cfg.rebalanceRelBand = Math.max(0, Number(els.rebalanceRelBandInput.value) || 0);
   }
   if (els.noSellModeInput) {
     cfg.noSellMode = !!els.noSellModeInput.checked;
@@ -1713,7 +1697,7 @@ function attachEventListeners() {
     // Read units-delta from the trades table inputs, update asset holdings, and
     // sum the actual USD cash flow (priced at fetch-time prices). This is what
     // went in/out — not details.cappedChange, which may be theoretical when
-    // filters (bands / dust / no-sell) shaved the per-asset trades.
+    // filters (dust / no-sell) shaved the per-asset trades.
     // If a user enters an over-sell (delta would take units negative), the
     // effective delta is clamped — and so is the recorded cash flow, so
     // investedSoFar stays faithful to what actually changed.
@@ -1798,8 +1782,7 @@ function attachEventListeners() {
   [
     'initialValueInput', 'stepInput', 'maxAdditionInput',
     'completedPeriodsInput', 'investedSoFarInput',
-    'minTradeSizeInput', 'rebalanceAbsBandInput', 'rebalanceRelBandInput',
-    'noSellModeInput',
+    'minTradeSizeInput', 'noSellModeInput',
   ].forEach((key) => {
     const input = els[key];
     if (!input) return;

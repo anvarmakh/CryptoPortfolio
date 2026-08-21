@@ -251,32 +251,6 @@
                 <div class="absolute left-[2px] top-[2px] w-[27px] h-[27px] bg-white rounded-full shadow transition-transform peer-checked:translate-x-[20px]"></div>
               </label>
             </div>
-
-            <div class="py-3">
-              <div class="flex items-center justify-between gap-3">
-                <label for="rebalanceAbsBandInput" class="text-[15px] text-white">Rebalance band — absolute (pp)</label>
-                <input id="rebalanceAbsBandInput" type="number" min="0" step="0.5"
-                       class="number-input w-32 text-right bg-transparent text-[15px] text-white
-                              placeholder-ios-label3 focus:outline-none"
-                       placeholder="e.g. 5" />
-              </div>
-              <p class="mt-1 text-[11px] text-ios-label3 leading-relaxed">
-                Skips rebalancing within this many points of target. 0 disables.
-              </p>
-            </div>
-
-            <div class="py-3">
-              <div class="flex items-center justify-between gap-3">
-                <label for="rebalanceRelBandInput" class="text-[15px] text-white">Rebalance band — relative (%)</label>
-                <input id="rebalanceRelBandInput" type="number" min="0" step="1"
-                       class="number-input w-32 text-right bg-transparent text-[15px] text-white
-                              placeholder-ios-label3 focus:outline-none"
-                       placeholder="e.g. 25" />
-              </div>
-              <p class="mt-1 text-[11px] text-ios-label3 leading-relaxed">
-                Proportional band — classic 5/25 rule uses abs=5, rel=25 (larger of the two applies).
-              </p>
-            </div>
           </div>
         </details>
 
