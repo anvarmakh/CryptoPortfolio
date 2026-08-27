@@ -165,6 +165,16 @@ function formatPercent(value, { decimals = 2, signed = false } = {}) {
   return `${sign}${value.toFixed(decimals)}%`;
 }
 
+// Maps an Alternative.me classification string to the ios-* text color used
+// by the matching stop in the Fear & Greed gradient bar.
+function fearGreedColorClass(classification) {
+  const c = String(classification || '').toLowerCase();
+  if (c.includes('extreme fear')) return 'text-ios-red';
+  if (c === 'fear') return 'text-ios-orange';
+  if (c === 'neutral') return 'text-ios-yellow';
+  return 'text-ios-green'; // Greed / Extreme Greed
+}
+
 function getElements() {
   return {
     // Header
@@ -174,6 +184,9 @@ function getElements() {
     heroPeriod: document.getElementById('heroPeriod'),
     heroDirectionBadge: document.getElementById('heroDirectionBadge'),
     heroAmount: document.getElementById('heroAmount'),
+    fearGreedValue: document.getElementById('fearGreedValue'),
+    fearGreedLabel: document.getElementById('fearGreedLabel'),
+    fearGreedMarker: document.getElementById('fearGreedMarker'),
     statPortfolioValue: document.getElementById('statPortfolioValue'),
     statInvested: document.getElementById('statInvested'),
     statPnL: document.getElementById('statPnL'),
@@ -926,6 +939,40 @@ async function fetchPrices() {
   }
 }
 
+function renderFearGreed(data) {
+  if (!els.fearGreedValue || !els.fearGreedLabel) return;
+
+  if (!data || !Number.isFinite(data.value)) {
+    els.fearGreedValue.textContent = '—';
+    els.fearGreedValue.className = 'text-[22px] font-bold text-ios-label2 tracking-tight';
+    els.fearGreedLabel.textContent = 'Unavailable';
+    els.fearGreedLabel.className = 'text-[15px] font-semibold text-ios-label2 mt-1';
+    return;
+  }
+
+  const colorClass = fearGreedColorClass(data.valueClassification);
+  els.fearGreedValue.textContent = String(Math.round(data.value));
+  els.fearGreedValue.className = `text-[22px] font-bold tracking-tight ${colorClass}`;
+  els.fearGreedLabel.textContent = data.valueClassification || '—';
+  els.fearGreedLabel.className = `text-[15px] font-semibold mt-1 ${colorClass}`;
+
+  if (els.fearGreedMarker) {
+    const pct = Math.min(100, Math.max(0, data.value));
+    els.fearGreedMarker.style.left = `${pct}%`;
+  }
+}
+
+async function fetchFearGreedIndex() {
+  try {
+    const res = await fetch('/api/fear-greed');
+    if (!res.ok) throw new Error(`Fear & Greed API error: ${res.status}`);
+    renderFearGreed(await res.json());
+  } catch (err) {
+    console.error('Failed to fetch Fear & Greed index', err);
+    renderFearGreed(null);
+  }
+}
+
 async function fetchHistory() {
   try {
     const res = await fetch('/api/history');
@@ -1669,6 +1716,7 @@ function attachEventListeners() {
 
   els.refreshPricesBtn.addEventListener('click', () => {
     fetchPrices();
+    fetchFearGreedIndex();
   });
 
   if (els.trackCurrentStateBtn) {
@@ -2023,6 +2071,7 @@ async function init() {
   }
 
   fetchPrices();
+  fetchFearGreedIndex();
   // Suspend intermediate chart renders until both history and price snapshots
   // have loaded, then render once with a consistent data set.
   _suspendChartRender = true;

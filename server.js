@@ -148,6 +148,40 @@ async function fetchCoinGeckoPrices(ids, maxAttempts = 4) {
   return result;
 }
 
+// ── Fear & Greed Index (Alternative.me — CoinGecko has no equivalent endpoint) ─
+// Upstream updates ~once/day, so a much longer cache than prices is fine.
+const FEAR_GREED_CACHE_TTL_MS = 30 * 60 * 1000; // 30 minutes
+let fearGreedCache = null; // { value, valueClassification, timestamp, fetchedAt }
+
+async function fetchFearGreedIndex() {
+  if (fearGreedCache && (Date.now() - fearGreedCache.fetchedAt) < FEAR_GREED_CACHE_TTL_MS) {
+    return fearGreedCache;
+  }
+
+  const ctrl = new AbortController();
+  const timeoutId = setTimeout(() => ctrl.abort(), 15_000);
+  try {
+    const resp = await fetch('https://api.alternative.me/fng/?limit=1', { signal: ctrl.signal });
+    if (!resp.ok) throw new Error(`HTTP ${resp.status}`);
+    const json = await resp.json();
+    const point = json?.data?.[0];
+    if (!point || Number.isNaN(Number(point.value))) throw new Error('Unexpected response shape');
+
+    fearGreedCache = {
+      value: Number(point.value),
+      valueClassification: point.value_classification,
+      timestamp: Number(point.timestamp) * 1000,
+      fetchedAt: Date.now(),
+    };
+    return fearGreedCache;
+  } catch (err) {
+    if (fearGreedCache) return fearGreedCache; // serve stale rather than fail outright
+    throw err;
+  } finally {
+    clearTimeout(timeoutId);
+  }
+}
+
 // ── Scheduled price snapshot (runs server-side at 00:00, 06:00, 12:00, 18:00 UTC) ─
 const SNAPSHOT_INTERVAL_MS = 6 * 60 * 60 * 1000;
 // Suppress a scheduled fire when any snapshot landed within this window — keeps
@@ -352,6 +386,18 @@ app.get('/api/prices', async (req, res) => {
       return res.status(429).json({ error: 'CoinGecko rate limit exceeded — please retry shortly' });
     }
     return res.status(502).json({ error: 'Failed to fetch prices from CoinGecko' });
+  }
+});
+
+// Fear & Greed Index proxy: CoinGecko has no equivalent endpoint, so this uses
+// Alternative.me (the de facto standard source for this metric) instead.
+app.get('/api/fear-greed', async (_req, res) => {
+  try {
+    const data = await fetchFearGreedIndex();
+    res.json(data);
+  } catch (err) {
+    console.error('Fear & Greed index error', err.message);
+    res.status(502).json({ error: 'Failed to fetch Fear & Greed index' });
   }
 });
 
