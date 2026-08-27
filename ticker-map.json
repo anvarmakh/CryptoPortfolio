@@ -52,5 +52,7 @@
   "SAND": "the-sandbox",
   "MANA": "decentraland",
   "AXS": "axie-infinity",
-  "CHZ": "chiliz"
+  "CHZ": "chiliz",
+  "USDT": "tether",
+  "XAUT": "tether-gold"
 }
