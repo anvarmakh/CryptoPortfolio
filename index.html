@@ -322,6 +322,24 @@
         </div>
         <div id="heroAmount" class="text-[22px] font-bold text-ios-label2 tracking-tight">—</div>
       </div>
+
+      <!-- Fear & Greed Index card -->
+      <div class="rounded-2xl bg-ios-card px-5 py-4">
+        <div class="flex items-center justify-between gap-3">
+          <div>
+            <div class="text-[12px] text-ios-label2">Fear &amp; Greed Index</div>
+            <div id="fearGreedLabel" class="text-[15px] font-semibold text-ios-label2 mt-1">—</div>
+          </div>
+          <div id="fearGreedValue" class="text-[22px] font-bold text-ios-label2 tracking-tight">—</div>
+        </div>
+        <div class="relative mt-3 h-1.5 rounded-full overflow-hidden"
+             style="background: linear-gradient(to right, #ff453a, #ff9f0a, #ffd60a, #30d158);">
+          <div id="fearGreedMarker"
+               class="absolute top-1/2 -translate-y-1/2 -translate-x-1/2 w-3 h-3 rounded-full bg-white
+                      shadow ring-2 ring-black/40 transition-[left] duration-500"
+               style="left: 50%;"></div>
+        </div>
+      </div>
     </section>
 
     <!-- Step error / warning (shown when config is missing or allocation off) -->
@@ -568,7 +586,7 @@
     </section>
 
     <footer class="text-[11px] text-ios-label3 text-center py-2">
-      Prices via CoinGecko · Config in browser storage · History persisted server-side
+      Prices via CoinGecko · Sentiment via Alternative.me · Config in browser storage · History persisted server-side
     </footer>
 
   </div>

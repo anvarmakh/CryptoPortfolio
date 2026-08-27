@@ -36,6 +36,10 @@ Simple web app to manage a crypto portfolio using a **value averaging** strategy
   - `CoinGecko` only (no API key required).
   - Frontend talks **only** to your backend at `/api/prices`, never directly to CoinGecko.
   - Per-id in-memory cache (60 s TTL) on the server avoids hammering the upstream.
+- **Fear & Greed Index**
+  - Sourced from `Alternative.me` — CoinGecko does not provide this metric.
+  - Frontend talks **only** to your backend at `/api/fear-greed`, never directly to Alternative.me.
+  - Server caches the value for 30 minutes since it only updates ~once/day upstream.
 
 ---
 
@@ -113,6 +117,21 @@ The app will:
   {
     "bitcoin":  { "usd": 63123.45 },
     "ethereum": { "usd": 3210.12 }
+  }
+  ```
+
+### Fear & Greed Index
+
+- `GET /api/fear-greed`
+
+  Response (sourced from Alternative.me; `timestamp`/`fetchedAt` are epoch ms):
+
+  ```jsonc
+  {
+    "value": 62,
+    "valueClassification": "Greed",
+    "timestamp": 1740441600000,
+    "fetchedAt": 1740441823456
   }
   ```
 
